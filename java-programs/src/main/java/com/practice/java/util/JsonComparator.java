@@ -106,7 +106,9 @@ public class JsonComparator {
         String json1 = "{\"name\":\"John\",\"age\":30,\"address\":{\"street\":\"123 Main St\",\"city\":\"Anytown\"}}";
         String json2 = "{\"name\":\"Jane\",\"age\":30,\"address\":{\"street\":\"456 Elm St\",\"city\":\"Othertown\"}}";
 
-        System.out.println(comparator.compareJsonObjects(json1, json2));
+        JsonNode res = comparator.compareJsonObjects(json1, json2);
+        System.out.println(res.get("summary").get("comparisonResult").toString());
+        System.out.println(res.toString());
     }
 
 }
