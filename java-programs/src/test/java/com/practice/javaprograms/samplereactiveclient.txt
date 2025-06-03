@@ -1,0 +1,199 @@
+@Async
+public CompletableFuture<ProcessingMetadata> initiateProcessing(File file) {
+    String processingId = apiClient.startProcessing(file);
+    return CompletableFuture.completedFuture(new ProcessingMetadata(file.getName(), processingId));
+}
+
+
+public void pollStatusUntilComplete(ProcessingMetadata metadata) {
+    ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(10);
+    
+    Runnable pollTask = new Runnable() {
+        @Override
+        public void run() {
+            ProcessingStatus status = apiClient.getStatus(metadata.getProcessingId());
+            if (status.isCompleted()) {
+                // consume result
+                Result result = status.getResult();
+                processResult(metadata.getFileName(), result);
+                scheduler.shutdown();
+            }
+        }
+    };
+
+    scheduler.scheduleAtFixedRate(pollTask, 0, 5, TimeUnit.SECONDS); // poll every 5 seconds
+}
+
+
+public void processAllFiles(List<File> files) {
+    ExecutorService executor = Executors.newFixedThreadPool(20); // adjust based on load
+    List<CompletableFuture<Void>> futures = files.stream()
+        .map(file -> CompletableFuture
+            .supplyAsync(() -> apiClient.startProcessing(file), executor)
+            .thenAccept(processingId -> pollStatusUntilComplete(new ProcessingMetadata(file.getName(), processingId)))
+        ).toList();
+
+    CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+}
+
+
+import java.util.concurrent.*;
+import java.util.*;
+
+public class ProcessingService {
+
+    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(10); // shared pool
+
+    // Holds scheduled futures so we can cancel them later
+    private final Map<String, ScheduledFuture<?>> scheduledTasks = new ConcurrentHashMap<>();
+
+    public void startProcessing(List<String> processingIds) {
+        for (String processingId : processingIds) {
+            ScheduledFuture<?> future = scheduler.scheduleAtFixedRate(() -> {
+                try {
+                    ProcessingStatus status = apiClient.getStatus(processingId);
+                    if (status.isCompleted()) {
+                        Result result = status.getResult();
+                        consumeResult(processingId, result);
+
+                        // Cancel this task
+                        ScheduledFuture<?> scheduledFuture = scheduledTasks.get(processingId);
+                        if (scheduledFuture != null) {
+                            scheduledFuture.cancel(false);
+                        }
+
+                    } else {
+                        System.out.println("Processing not yet complete for: " + processingId);
+                    }
+                } catch (Exception e) {
+                    System.err.println("Error polling for ID " + processingId + ": " + e.getMessage());
+                    // Optional: retry or cancel after N failures
+                }
+            }, 0, 5, TimeUnit.SECONDS); // Poll every 5 seconds
+
+            scheduledTasks.put(processingId, future);
+        }
+    }
+
+    private void consumeResult(String processingId, Result result) {
+        System.out.println("Completed processing for: " + processingId);
+        // handle the result here
+    }
+
+    // Optional: shutdown the scheduler gracefully when done
+    public void shutdownScheduler() {
+        scheduler.shutdown();
+    }
+}
+
+
+
+
+---- reactive
+
+@Service
+public class ReactiveProcessingService {
+
+    private final WebClient webClient;
+
+    public ReactiveProcessingService(WebClient.Builder builder) {
+        this.webClient = builder.baseUrl("https://external-api.com").build();
+    }
+
+    public void processAll(List<File> files) {
+        Flux.fromIterable(files)
+            .flatMap(this::initiateProcessing) // Step 1: start processing
+            .flatMap(this::pollUntilCompleted) // Step 2: poll until done
+            .doOnNext(this::consumeResult)     // Step 3: consume result
+            .subscribe(); // Start the flow
+    }
+
+    private Mono<String> initiateProcessing(File file) {
+        return webClient.post()
+            .uri("/start")
+            .bodyValue(file) // or use Multipart if needed
+            .retrieve()
+            .bodyToMono(String.class) // assuming it returns a processingId
+            .doOnNext(id -> System.out.println("Started processing: " + id));
+    }
+
+    private Mono<Result> pollUntilCompleted(String processingId) {
+        return Mono.defer(() -> webClient.get()
+                .uri("/status/{id}", processingId)
+                .retrieve()
+                .bodyToMono(StatusResponse.class))
+            .repeatWhen(flux -> flux.delayElements(Duration.ofSeconds(5)))
+            .takeUntil(StatusResponse::isCompleted)
+            .last() // take the final completed response
+            .map(StatusResponse::getResult);
+    }
+
+    private void consumeResult(Result result) {
+        System.out.println("Processing complete for result: " + result);
+        // further business logic here
+    }
+
+    // helper DTOs
+    static class StatusResponse {
+        private boolean completed;
+        private Result result;
+
+        public boolean isCompleted() {
+            return completed;
+        }
+
+        public Result getResult() {
+            return result;
+        }
+    }
+
+    static class Result {
+        // Your result fields here
+    }
+}
+
+
+🔁 Optional Enhancements
+Timeout per processing ID
+
+.pollUntilCompleted(id).timeout(Duration.ofMinutes(10))
+Retry on transient errors
+
+
+.retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
+Control concurrency
+
+
+.flatMap(this::pollUntilCompleted, 20) // max 20 concurrent polls
+Backoff strategy instead of fixed 5-second interval:
+
+
+.repeatWhen(it -> it.delayElements(Duration.ofSeconds(5))) // can make dynamic
+
+
+
+@Bean
+public WebClient externalApiClient(WebClient.Builder builder) {
+    return builder
+        .baseUrl("https://external-api.com")
+        .defaultHeaders(headers -> headers.setBasicAuth("myUser", "myPass"))
+        .clientConnector(new ReactorClientHttpConnector(
+            HttpClient.create().responseTimeout(Duration.ofSeconds(10))
+        ))
+        .build();
+}
+
+
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-webflux</artifactId> <!-- WebClient lives here -->
+</dependency>
+
+If you have many WebClient.block() calls, consider using a separate ExecutorService to offload them:
+
+ExecutorService ioPool = Executors.newFixedThreadPool(20);
+
+public Response fetch() {
+    return CompletableFuture.supplyAsync(() -> webClient.get()...block(), ioPool).get();
+}
+
