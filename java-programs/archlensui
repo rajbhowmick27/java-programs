@@ -3,13 +3,13 @@ import React from "react";
 const GroupNode = ({ data, selected }) => {
   return (
     <div
-      className={`w-full h-full relative rounded-xl border-2 shadow-md p-2 ${
-        selected ? "border-blue-600" : "border-slate-400"
-      } bg-slate-100`}
+      className={`w-full h-full relative rounded-xl border-2 shadow-md p-2 overflow-visible
+        ${selected ? "border-blue-600" : "border-slate-400"} bg-slate-100`}
     >
       <div className="text-slate-800 font-semibold text-sm mb-1">
         📦 {data.label || "Group"}
       </div>
+      {/* Children will automatically be rendered here via ReactFlow */}
     </div>
   );
 };
