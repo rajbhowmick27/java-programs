@@ -1,20 +1,52 @@
-// components/BoxNode.jsx
-const BoxNode = ({ data }) => {
+// components/CustomNode.jsx
+import React from "react";
+import { Handle, Position } from "reactflow";
+
+// Capitalize helper
+const capitalize = (s) => s && s[0].toUpperCase() + s.slice(1);
+
+const CustomNode = ({ data, selected }) => {
+  const { type = "Resource", name = "Unnamed", iconType = "Resource" } = data;
+
+  const iconPath = `/assets/icons/${iconType || type}.png`;
+
   return (
     <div
-      className="absolute border-2 border-dashed border-slate-400 rounded-xl bg-slate-50 z-[-1]"
-      style={{
-        width: data.width,
-        height: data.height,
-        padding: "8px",
-        boxSizing: "border-box",
-      }}
+      className={`rounded-xl border-2 p-2 w-48 shadow-md bg-white hover:shadow-lg transition duration-150 ${
+        selected ? "border-blue-600" : "border-gray-300"
+      }`}
     >
-      <div className="font-semibold text-slate-600 mb-1 text-sm">
-        📦 {data.label}
+      <div className="flex items-center space-x-2">
+        <img
+          src={iconPath}
+          alt={type}
+          className="w-8 h-8 object-contain"
+          onError={(e) => {
+            e.target.onerror = null;
+            e.target.src = "/assets/icons/default.png"; // fallback icon
+          }}
+        />
+        <div className="flex flex-col overflow-hidden">
+          <span className="text-sm font-bold text-gray-800 truncate">
+            {capitalize(type)}
+          </span>
+          <span className="text-xs text-gray-500 truncate">{name}</span>
+        </div>
       </div>
+
+      {/* Optional node handles */}
+      <Handle
+        type="target"
+        position={Position.Top}
+        className="w-2 h-2 bg-blue-500"
+      />
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        className="w-2 h-2 bg-blue-500"
+      />
     </div>
   );
 };
 
-export default BoxNode;
+export default CustomNode;
