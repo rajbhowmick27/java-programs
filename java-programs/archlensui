@@ -1,44 +1,71 @@
-import React, { useEffect } from 'react';
+// edgeUtils.js
+export const getStyledEdge = (source, target, label, index = 0) => ({
+  id: `e-${source}-${target}-${index}`,
+  source,
+  target,
+  type: 'smoothstep',
+  label,
+  animated: true,
+  style: {
+    stroke: '#6366f1',
+    strokeWidth: 2,
+    // optional dash for alternate appearance
+    strokeDasharray: index % 2 === 0 ? '' : '6 3',
+  },
+  labelStyle: {
+    fontSize: 12,
+    fontWeight: 500,
+    fill: '#111827',
+  },
+  labelBgStyle: {
+    fill: '#ffffff',
+    fillOpacity: 0.85,
+    stroke: '#cbd5e1',
+    strokeWidth: 1,
+    rx: 4,
+    ry: 4,
+  },
+  labelBgPadding: [6, 4],
+});
+
+
+// App.jsx or FlowCanvas.jsx
+import React from 'react';
 import ReactFlow, {
-  useNodesState,
-  useEdgesState,
-  useReactFlow,
-  Controls,
   Background,
+  Controls,
+  MiniMap,
+  ReactFlowProvider,
 } from 'reactflow';
 
-const MyDiagram = ({ initialNodes, initialEdges }) => {
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
-  const { fitView } = useReactFlow();
+import 'reactflow/dist/style.css';
+import { nodes } from './nodes';
+import { edges } from './edges';
 
-  // 👇 Auto center + zoom when nodes are updated
-  useEffect(() => {
-    if (nodes.length > 0) {
-      const timeout = setTimeout(() => {
-        fitView({ padding: 0.4, duration: 800 }); // smooth animation + space
-      }, 200); // small delay ensures canvas is rendered
-
-      return () => clearTimeout(timeout);
-    }
-  }, [nodes, edges, fitView]);
-
+export default function Diagram() {
   return (
-    <ReactFlow
-      nodes={nodes}
-      edges={edges}
-      onNodesChange={onNodesChange}
-      onEdgesChange={onEdgesChange}
-      fitView // initial layout hint
-      fitViewOptions={{ padding: 0.2 }}
-      snapToGrid
-      snapGrid={[15, 15]}
-      proOptions={{ hideAttribution: true }}
-    >
-      <Background gap={20} color="#eee" />
-      <Controls />
-    </ReactFlow>
+    <ReactFlowProvider>
+      <div className="h-screen w-screen">
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          fitView
+          fitViewOptions={{ padding: 0.2 }}
+          defaultEdgeOptions={{
+            type: 'smoothstep',
+            markerEnd: {
+              type: 'arrowclosed',
+              width: 20,
+              height: 20,
+              color: '#6366f1',
+            },
+          }}
+        >
+          <Background gap={20} />
+          <MiniMap />
+          <Controls />
+        </ReactFlow>
+      </div>
+    </ReactFlowProvider>
   );
-};
-
-export default MyDiagram;
+}
