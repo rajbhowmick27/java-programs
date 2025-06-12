@@ -1,89 +1,17 @@
-import dagre from "dagre";
-import { v4 as uuidv4 } from "uuid";
+import React from "react";
 
-export const layoutWithStandalone = (nodes, edges, rankdir = "TB") => {
-  const dagreGraph = new dagre.graphlib.Graph();
-  dagreGraph.setDefaultEdgeLabel(() => ({}));
-  dagreGraph.setGraph({ rankdir });
-
-  if (!nodes || nodes.length === 0) return { nodes: [], edges };
-  if (!edges) edges = [];
-
-  const connectedIds = new Set(edges.flatMap(e => [e.source, e.target]));
-  const connectedNodes = nodes.filter(n => connectedIds.has(n.id));
-  const standaloneNodes = nodes.filter(n => !connectedIds.has(n.id));
-
-  // Layout connected nodes
-  connectedNodes.forEach(n =>
-    dagreGraph.setNode(n.id, { width: 200, height: 100 })
+const GroupNode = ({ data, selected }) => {
+  return (
+    <div
+      className={`w-full h-full relative rounded-xl border-2 shadow-md p-2 ${
+        selected ? "border-blue-600" : "border-slate-400"
+      } bg-slate-100`}
+    >
+      <div className="text-slate-800 font-semibold text-sm mb-1">
+        📦 {data.label || "Group"}
+      </div>
+    </div>
   );
-  edges.forEach(e => dagreGraph.setEdge(e.source, e.target));
-  dagre.layout(dagreGraph);
-
-  let maxX = 0,
-    maxY = 0;
-  connectedNodes.forEach(n => {
-    const pos = dagreGraph.node(n.id);
-    if (pos) {
-      maxX = Math.max(maxX, pos.x);
-      maxY = Math.max(maxY, pos.y);
-    }
-  });
-
-  const layoutedConnected = connectedNodes.map(node => {
-    const pos = dagreGraph.node(node.id) || { x: 0, y: 0 };
-    return {
-      ...node,
-      position: { x: pos.x, y: pos.y },
-      sourcePosition: rankdir === "LR" ? "right" : "bottom",
-      targetPosition: rankdir === "LR" ? "left" : "top",
-    };
-  });
-
-  // Layout standalone nodes in a grid inside a group
-  const containerId = "standalone-group";
-  const padding = 200;
-  const gridSpacingX = 200;
-  const gridSpacingY = 140;
-  const columns = 3;
-
-  const startX = rankdir === "LR" ? maxX + padding : 0;
-  const startY = rankdir === "LR" ? 0 : maxY + padding;
-
-  const layoutedStandalone = standaloneNodes.map((node, idx) => {
-    const row = Math.floor(idx / columns);
-    const col = idx % columns;
-    const x = col * gridSpacingX + 40;
-    const y = row * gridSpacingY + 60;
-
-    return {
-      ...node,
-      parentNode: containerId,
-      extent: "parent",
-      position: { x, y },
-    };
-  });
-
-  const containerWidth = columns * gridSpacingX + 100;
-  const containerHeight =
-    Math.ceil(standaloneNodes.length / columns) * gridSpacingY + 100;
-
-  const containerNode = {
-    id: containerId,
-    type: "group",
-    position: { x: startX, y: startY },
-    style: {
-      width: containerWidth,
-      height: containerHeight,
-    },
-    data: {
-      label: "Standalone Resources",
-      isGroup: true,
-    },
-  };
-
-  return {
-    nodes: [...layoutedConnected, ...layoutedStandalone, containerNode],
-    edges,
-  };
 };
+
+export default GroupNode;
