@@ -57,6 +57,81 @@ const nodeTypes = {
   custom: CustomNode
 };
 
+import dagre from "dagre";
+
+const dagreGraph = new dagre.graphlib.Graph();
+dagreGraph.setDefaultEdgeLabel(() => ({}));
+
+// direction: TB (top-bottom), LR (left-right)
+export const getLayoutedElements = (nodes, edges, direction = "TB") => {
+  const isHorizontal = direction === "LR";
+  dagreGraph.setGraph({ rankdir: direction });
+
+  nodes.forEach((node) => {
+    dagreGraph.setNode(node.id, { width: 200, height: 100 });
+  });
+
+  edges.forEach((edge) => {
+    dagreGraph.setEdge(edge.source, edge.target);
+  });
+
+  dagre.layout(dagreGraph);
+
+  const layoutedNodes = nodes.map((node) => {
+    const nodeWithPosition = dagreGraph.node(node.id);
+    return {
+      ...node,
+      position: {
+        x: nodeWithPosition.x,
+        y: nodeWithPosition.y,
+      },
+      sourcePosition: isHorizontal ? "right" : "bottom",
+      targetPosition: isHorizontal ? "left" : "top",
+    };
+  });
+
+  return { nodes: layoutedNodes, edges };
+};
+
+import { getLayoutedElements } from './getLayoutedElements';
+
+useEffect(() => {
+  axios.get("http://localhost:8080/api/graph").then((res) => {
+    const { nodes: backendNodes, edges: backendEdges } = res.data;
+
+    const formattedNodes = backendNodes.map((n) => ({
+      id: n.id,
+      type: "custom",
+      data: {
+        label: n.label,
+        type: n.type,
+        metadata: n.metadata,
+      },
+      position: { x: 0, y: 0 }, // will be updated by Dagre
+    }));
+
+    const formattedEdges = backendEdges.map((e) => ({
+      id: `${e.from}->${e.to}`,
+      source: e.from,
+      target: e.to,
+      label: e.relationship,
+      animated: true,
+    }));
+
+    const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(
+      formattedNodes,
+      formattedEdges,
+      "TB" // or "LR"
+    );
+
+    allNodesRef.current = layoutedNodes;
+    setNodes(layoutedNodes);
+    setEdges(layoutedEdges);
+  });
+}, []);
+
+-------------
+
 function AwsGraph() {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
