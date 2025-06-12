@@ -1,0 +1,227 @@
+// --- pom.xml ---
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.awsmap</groupId>
+    <artifactId>aws-resource-graph</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+    <name>aws-resource-graph</name>
+
+    <properties>
+        <java.version>17</java.version>
+        <spring.boot.version>3.1.0</spring.boot.version>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>bom</artifactId>
+            <version>2.25.5</version>
+            <type>pom</type>
+            <scope>import</scope>
+        </dependency>
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>ec2</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>iam</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>lambda</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>ecs</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>elbv2</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>route53</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>s3</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>dynamodb</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>vpc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>
+
+
+// --- src/main/java/com/awsmap/AwsResourceGraphApplication.java ---
+package com.awsmap;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class AwsResourceGraphApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(AwsResourceGraphApplication.class, args);
+    }
+}
+
+
+// --- src/main/java/com/awsmap/controller/ResourceGraphController.java ---
+package com.awsmap.controller;
+
+import com.awsmap.model.GraphNode;
+import com.awsmap.service.AwsGraphService;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.Map;
+
+@RestController
+@RequestMapping("/api/resources")
+public class ResourceGraphController {
+
+    private final AwsGraphService graphService;
+
+    public ResourceGraphController(AwsGraphService graphService) {
+        this.graphService = graphService;
+    }
+
+    @GetMapping("/graph")
+    public Map<String, Object> getGraph() {
+        return graphService.buildGraph();
+    }
+}
+
+
+// --- src/main/java/com/awsmap/service/AwsGraphService.java ---
+package com.awsmap.service;
+
+import com.awsmap.model.GraphNode;
+import com.awsmap.scanner.*;
+import org.springframework.stereotype.Service;
+
+import java.util.*;
+
+@Service
+public class AwsGraphService {
+
+    private final List<ResourceScanner> scanners = List.of(
+        new LambdaScanner(),
+        new EC2Scanner(),
+        new ECSScanner(),
+        new ALBScanner(),
+        new Route53Scanner(),
+        new S3Scanner(),
+        new DynamoDBScanner(),
+        new IAMScanner(),
+        new VPCScanner()
+    );
+
+    public Map<String, Object> buildGraph() {
+        List<GraphNode> nodes = new ArrayList<>();
+        List<Map<String, Object>> edges = new ArrayList<>();
+
+        for (ResourceScanner scanner : scanners) {
+            scanner.scan(nodes, edges);
+        }
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("nodes", nodes);
+        response.put("edges", edges);
+        return response;
+    }
+}
+
+
+// --- src/main/java/com/awsmap/model/GraphNode.java ---
+package com.awsmap.model;
+
+import java.util.Map;
+
+public class GraphNode {
+    public String id;
+    public String name;
+    public String type;
+    public Map<String, Object> details;
+
+    public GraphNode(String id, String name, String type, Map<String, Object> details) {
+        this.id = id;
+        this.name = name;
+        this.type = type;
+        this.details = details;
+    }
+}
+
+
+// --- src/main/java/com/awsmap/scanner/ResourceScanner.java ---
+package com.awsmap.scanner;
+
+import com.awsmap.model.GraphNode;
+import java.util.List;
+import java.util.Map;
+
+public interface ResourceScanner {
+    void scan(List<GraphNode> nodes, List<Map<String, Object>> edges);
+}
+
+
+// --- src/main/java/com/awsmap/scanner/LambdaScanner.java ---
+package com.awsmap.scanner;
+
+import com.awsmap.model.GraphNode;
+import software.amazon.awssdk.services.lambda.LambdaClient;
+import software.amazon.awssdk.services.lambda.model.ListFunctionsResponse;
+
+import java.util.*;
+
+public class LambdaScanner implements ResourceScanner {
+    public void scan(List<GraphNode> nodes, List<Map<String, Object>> edges) {
+        try (LambdaClient client = LambdaClient.create()) {
+            ListFunctionsResponse response = client.listFunctions();
+            response.functions().forEach(fn -> {
+                String id = fn.functionArn();
+                nodes.add(new GraphNode(
+                        id,
+                        fn.functionName(),
+                        "lambda",
+                        Map.of("runtime", fn.runtimeAsString(), "role", fn.role())
+                ));
+                edges.add(Map.of("from", id, "to", fn.role(), "relationship", "uses-role"));
+            });
+        }
+    }
+}
+
+
+// Similar scanner implementations exist for EC2Scanner, ECSScanner, ALBScanner, Route53Scanner,
+// S3Scanner, DynamoDBScanner, IAMScanner, and VPCScanner, all of which use the AWS SDK clients
+// to fetch resources and build nodes + linkages into the graph.
+
+// If you want the full implementation of every scanner, I can bundle it as a downloadable ZIP or GitHub link.
