@@ -1,71 +1,9 @@
-// edgeUtils.js
-export const getStyledEdge = (source, target, label, index = 0) => ({
-  id: `e-${source}-${target}-${index}`,
-  source,
-  target,
-  type: 'smoothstep',
-  label,
-  animated: true,
-  style: {
-    stroke: '#6366f1',
-    strokeWidth: 2,
-    // optional dash for alternate appearance
-    strokeDasharray: index % 2 === 0 ? '' : '6 3',
-  },
-  labelStyle: {
-    fontSize: 12,
-    fontWeight: 500,
-    fill: '#111827',
-  },
-  labelBgStyle: {
-    fill: '#ffffff',
-    fillOpacity: 0.85,
-    stroke: '#cbd5e1',
-    strokeWidth: 1,
-    rx: 4,
-    ry: 4,
-  },
-  labelBgPadding: [6, 4],
-});
-
-
-// App.jsx or FlowCanvas.jsx
-import React from 'react';
-import ReactFlow, {
-  Background,
-  Controls,
-  MiniMap,
-  ReactFlowProvider,
-} from 'reactflow';
-
-import 'reactflow/dist/style.css';
-import { nodes } from './nodes';
-import { edges } from './edges';
-
-export default function Diagram() {
-  return (
-    <ReactFlowProvider>
-      <div className="h-screen w-screen">
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          fitView
-          fitViewOptions={{ padding: 0.2 }}
-          defaultEdgeOptions={{
-            type: 'smoothstep',
-            markerEnd: {
-              type: 'arrowclosed',
-              width: 20,
-              height: 20,
-              color: '#6366f1',
-            },
-          }}
-        >
-          <Background gap={20} />
-          <MiniMap />
-          <Controls />
-        </ReactFlow>
-      </div>
-    </ReactFlowProvider>
-  );
-}
+defaultEdgeOptions={{
+    markerEnd: {
+      type: 'arrowclosed',
+      color: '#6366f1',
+      width: 20,
+      height: 20,
+    },
+    type: 'smoothstep',
+  }}
