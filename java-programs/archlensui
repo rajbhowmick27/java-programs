@@ -13,14 +13,15 @@ export const layoutWithStandalone = (nodes, edges, rankdir = "TB") => {
   const connectedNodes = nodes.filter(n => connectedIds.has(n.id));
   const standaloneNodes = nodes.filter(n => !connectedIds.has(n.id));
 
-  // Layout connected nodes with dagre
+  // Layout connected nodes
   connectedNodes.forEach(n =>
     dagreGraph.setNode(n.id, { width: 200, height: 100 })
   );
   edges.forEach(e => dagreGraph.setEdge(e.source, e.target));
   dagre.layout(dagreGraph);
 
-  let maxX = 0, maxY = 0;
+  let maxX = 0,
+    maxY = 0;
   connectedNodes.forEach(n => {
     const pos = dagreGraph.node(n.id);
     if (pos) {
@@ -39,22 +40,22 @@ export const layoutWithStandalone = (nodes, edges, rankdir = "TB") => {
     };
   });
 
-  // Layout standalone nodes in a group container
-  const containerId = uuidv4();
+  // Layout standalone nodes in a grid inside a group
+  const containerId = "standalone-group";
   const padding = 200;
   const gridSpacingX = 200;
   const gridSpacingY = 140;
   const columns = 3;
 
-  // Position container after connected layout
   const startX = rankdir === "LR" ? maxX + padding : 0;
   const startY = rankdir === "LR" ? 0 : maxY + padding;
 
   const layoutedStandalone = standaloneNodes.map((node, idx) => {
     const row = Math.floor(idx / columns);
     const col = idx % columns;
-    const x = col * gridSpacingX + 20; // relative to parent
-    const y = row * gridSpacingY + 40;
+    const x = col * gridSpacingX + 40;
+    const y = row * gridSpacingY + 60;
+
     return {
       ...node,
       parentNode: containerId,
@@ -63,8 +64,9 @@ export const layoutWithStandalone = (nodes, edges, rankdir = "TB") => {
     };
   });
 
-  const containerWidth = columns * gridSpacingX + 80;
-  const containerHeight = Math.ceil(standaloneNodes.length / columns) * gridSpacingY + 100;
+  const containerWidth = columns * gridSpacingX + 100;
+  const containerHeight =
+    Math.ceil(standaloneNodes.length / columns) * gridSpacingY + 100;
 
   const containerNode = {
     id: containerId,
@@ -73,10 +75,6 @@ export const layoutWithStandalone = (nodes, edges, rankdir = "TB") => {
     style: {
       width: containerWidth,
       height: containerHeight,
-      backgroundColor: "#f1f5f9",
-      border: "2px solid #94a3b8",
-      borderRadius: 12,
-      overflow: "visible",
     },
     data: {
       label: "Standalone Resources",
@@ -89,53 +87,3 @@ export const layoutWithStandalone = (nodes, edges, rankdir = "TB") => {
     edges,
   };
 };
-
-
----------------
-
-
-import React from "react";
-import { Handle, Position } from "reactflow";
-
-const GroupNode = ({ id, data, selected }) => {
-  return (
-    <div
-      style={{
-        position: "relative",
-        width: "100%",
-        height: "100%",
-        border: selected ? "2px solid #3b82f6" : "2px solid #94a3b8",
-        borderRadius: "12px",
-        backgroundColor: "#f8fafc",
-        boxShadow: "0 4px 10px rgba(0, 0, 0, 0.05)",
-        overflow: "visible",
-        padding: "8px",
-      }}
-    >
-      <div
-        style={{
-          fontWeight: "600",
-          fontSize: "14px",
-          marginBottom: "4px",
-          color: "#0f172a",
-        }}
-      >
-        {data.label}
-      </div>
-
-      {/* Optional Handle for connections to group itself */}
-      <Handle
-        type="target"
-        position={Position.Top}
-        style={{ background: "#0f172a", visibility: "hidden" }}
-      />
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        style={{ background: "#0f172a", visibility: "hidden" }}
-      />
-    </div>
-  );
-};
-
-export default GroupNode;
