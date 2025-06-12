@@ -1,86 +1,20 @@
-import dagre from "dagre";
-
-export const layoutWithStandalone = (nodes, edges, rankdir = "TB") => {
-  const dagreGraph = new dagre.graphlib.Graph();
-  dagreGraph.setDefaultEdgeLabel(() => ({}));
-  dagreGraph.setGraph({ rankdir });
-
-  if (!nodes || nodes.length === 0) return { nodes: [], edges };
-  if (!edges) edges = [];
-
-  const connectedIds = new Set(edges.flatMap(e => [e.source, e.target]));
-  const connectedNodes = nodes.filter(n => connectedIds.has(n.id));
-  const standaloneNodes = nodes.filter(n => !connectedIds.has(n.id));
-
-  // Layout connected nodes with Dagre
-  connectedNodes.forEach(n => dagreGraph.setNode(n.id, { width: 200, height: 100 }));
-  edges.forEach(e => dagreGraph.setEdge(e.source, e.target));
-  dagre.layout(dagreGraph);
-
-  let maxX = 0, maxY = 0;
-  connectedNodes.forEach(n => {
-    const pos = dagreGraph.node(n.id);
-    if (pos) {
-      maxX = Math.max(maxX, pos.x);
-      maxY = Math.max(maxY, pos.y);
-    }
-  });
-
-  const layoutedConnected = connectedNodes.map(node => {
-    const pos = dagreGraph.node(node.id) || { x: 0, y: 0 };
-    return {
-      ...node,
-      position: { x: pos.x, y: pos.y },
-      sourcePosition: rankdir === "LR" ? "right" : "bottom",
-      targetPosition: rankdir === "LR" ? "left" : "top",
-    };
-  });
-
-  // Layout standalone nodes in grid
-  const padding = 200;
-  const gridSpacingX = 200;
-  const gridSpacingY = 140;
-  const columns = 3;
-
-  let startX = rankdir === "LR" ? maxX + padding : 0;
-  let startY = rankdir === "LR" ? 0 : maxY + padding;
-
-  const layoutedStandalone = standaloneNodes.map((node, idx) => {
-    const row = Math.floor(idx / columns);
-    const col = idx % columns;
-    const x = startX + col * gridSpacingX + 20;
-    const y = startY + row * gridSpacingY + 60;
-    return {
-      ...node,
-      position: { x, y },
-      sourcePosition: "bottom",
-      targetPosition: "top",
-    };
-  });
-
-  // Create a fake node to render a box behind standalone nodes
-  if (standaloneNodes.length > 0) {
-    const boxNode = {
-      id: "standalone-box",
-      type: "box", // Custom node that renders a border
-      position: { x: startX, y: startY },
-      data: {
-        label: "Standalone Resources",
-        width: columns * gridSpacingX + 100,
-        height: Math.ceil(standaloneNodes.length / columns) * gridSpacingY + 100,
-      },
-      style: { pointerEvents: "none" },
-      draggable: false,
-      selectable: false,
-    };
-    return {
-      nodes: [boxNode, ...layoutedConnected, ...layoutedStandalone],
-      edges,
-    };
-  }
-
-  return {
-    nodes: [...layoutedConnected],
-    edges,
-  };
+// components/BoxNode.jsx
+const BoxNode = ({ data }) => {
+  return (
+    <div
+      className="absolute border-2 border-dashed border-slate-400 rounded-xl bg-slate-50 z-[-1]"
+      style={{
+        width: data.width,
+        height: data.height,
+        padding: "8px",
+        boxSizing: "border-box",
+      }}
+    >
+      <div className="font-semibold text-slate-600 mb-1 text-sm">
+        📦 {data.label}
+      </div>
+    </div>
+  );
 };
+
+export default BoxNode;
