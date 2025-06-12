@@ -13,11 +13,12 @@ export const layoutWithStandalone = (nodes, edges, rankdir = "TB") => {
   const connectedNodes = nodes.filter(n => connectedIds.has(n.id));
   const standaloneNodes = nodes.filter(n => !connectedIds.has(n.id));
 
-  if (connectedNodes.length > 0) {
-    connectedNodes.forEach(n => dagreGraph.setNode(n.id, { width: 200, height: 100 }));
-    edges.forEach(e => dagreGraph.setEdge(e.source, e.target));
-    dagre.layout(dagreGraph);
-  }
+  // Layout connected nodes with dagre
+  connectedNodes.forEach(n =>
+    dagreGraph.setNode(n.id, { width: 200, height: 100 })
+  );
+  edges.forEach(e => dagreGraph.setEdge(e.source, e.target));
+  dagre.layout(dagreGraph);
 
   let maxX = 0, maxY = 0;
   connectedNodes.forEach(n => {
@@ -38,47 +39,49 @@ export const layoutWithStandalone = (nodes, edges, rankdir = "TB") => {
     };
   });
 
-  // Group standalone nodes inside a container node
+  // Layout standalone nodes in a group container
   const containerId = uuidv4();
   const padding = 200;
   const gridSpacingX = 200;
   const gridSpacingY = 140;
   const columns = 3;
-  const containerChildren = [];
 
-  let startX = rankdir === "LR" ? maxX + padding : 0;
-  let startY = rankdir === "LR" ? 0 : maxY + padding;
+  // Position container after connected layout
+  const startX = rankdir === "LR" ? maxX + padding : 0;
+  const startY = rankdir === "LR" ? 0 : maxY + padding;
 
   const layoutedStandalone = standaloneNodes.map((node, idx) => {
     const row = Math.floor(idx / columns);
     const col = idx % columns;
-    const x = startX + col * gridSpacingX + 20;
-    const y = startY + row * gridSpacingY + 60;
-    containerChildren.push(node.id);
+    const x = col * gridSpacingX + 20; // relative to parent
+    const y = row * gridSpacingY + 40;
     return {
       ...node,
       parentNode: containerId,
-      extent: 'parent',
+      extent: "parent",
       position: { x, y },
     };
   });
 
-  const containerWidth = columns * gridSpacingX + 100;
+  const containerWidth = columns * gridSpacingX + 80;
   const containerHeight = Math.ceil(standaloneNodes.length / columns) * gridSpacingY + 100;
 
   const containerNode = {
     id: containerId,
-    type: 'group',
+    type: "group",
     position: { x: startX, y: startY },
     style: {
       width: containerWidth,
       height: containerHeight,
-      padding: 10,
-      backgroundColor: '#f1f5f9',
-      border: '2px solid #94a3b8',
+      backgroundColor: "#f1f5f9",
+      border: "2px solid #94a3b8",
       borderRadius: 12,
+      overflow: "visible",
     },
-    data: { label: 'Standalone Resources', isGroup: true },
+    data: {
+      label: "Standalone Resources",
+      isGroup: true,
+    },
   };
 
   return {
@@ -88,9 +91,51 @@ export const layoutWithStandalone = (nodes, edges, rankdir = "TB") => {
 };
 
 
+---------------
 
-export const GroupNode = ({ data }) => (
-  <div style={{ padding: 10, fontWeight: 'bold' }}>
-    📦 {data.label}
-  </div>
-);
+
+import React from "react";
+import { Handle, Position } from "reactflow";
+
+const GroupNode = ({ id, data, selected }) => {
+  return (
+    <div
+      style={{
+        position: "relative",
+        width: "100%",
+        height: "100%",
+        border: selected ? "2px solid #3b82f6" : "2px solid #94a3b8",
+        borderRadius: "12px",
+        backgroundColor: "#f8fafc",
+        boxShadow: "0 4px 10px rgba(0, 0, 0, 0.05)",
+        overflow: "visible",
+        padding: "8px",
+      }}
+    >
+      <div
+        style={{
+          fontWeight: "600",
+          fontSize: "14px",
+          marginBottom: "4px",
+          color: "#0f172a",
+        }}
+      >
+        {data.label}
+      </div>
+
+      {/* Optional Handle for connections to group itself */}
+      <Handle
+        type="target"
+        position={Position.Top}
+        style={{ background: "#0f172a", visibility: "hidden" }}
+      />
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        style={{ background: "#0f172a", visibility: "hidden" }}
+      />
+    </div>
+  );
+};
+
+export default GroupNode;
