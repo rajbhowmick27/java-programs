@@ -1,9 +1,44 @@
-const { fitView } = useReactFlow();
+import React, { useEffect } from 'react';
+import ReactFlow, {
+  useNodesState,
+  useEdgesState,
+  useReactFlow,
+  Controls,
+  Background,
+} from 'reactflow';
 
+const MyDiagram = ({ initialNodes, initialEdges }) => {
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+  const { fitView } = useReactFlow();
+
+  // 👇 Auto center + zoom when nodes are updated
   useEffect(() => {
-    // Delay fitView slightly to allow rendering
-    const timeout = setTimeout(() => {
-      fitView({ padding: 0.2 });
-    }, 100);
-    return () => clearTimeout(timeout);
+    if (nodes.length > 0) {
+      const timeout = setTimeout(() => {
+        fitView({ padding: 0.4, duration: 800 }); // smooth animation + space
+      }, 200); // small delay ensures canvas is rendered
+
+      return () => clearTimeout(timeout);
+    }
   }, [nodes, edges, fitView]);
+
+  return (
+    <ReactFlow
+      nodes={nodes}
+      edges={edges}
+      onNodesChange={onNodesChange}
+      onEdgesChange={onEdgesChange}
+      fitView // initial layout hint
+      fitViewOptions={{ padding: 0.2 }}
+      snapToGrid
+      snapGrid={[15, 15]}
+      proOptions={{ hideAttribution: true }}
+    >
+      <Background gap={20} color="#eee" />
+      <Controls />
+    </ReactFlow>
+  );
+};
+
+export default MyDiagram;
