@@ -1,10 +1,10 @@
 import dagre from "dagre";
 
-const dagreGraph = new dagre.graphlib.Graph();
-dagreGraph.setDefaultEdgeLabel(() => ({}));
-dagreGraph.setGraph({ rankdir: "TB" });
+export const layoutWithStandalone = (nodes, edges, rankdir = "TB") => {
+  const dagreGraph = new dagre.graphlib.Graph();
+  dagreGraph.setDefaultEdgeLabel(() => ({}));
+  dagreGraph.setGraph({ rankdir });
 
-export const layoutWithStandalone = (nodes, edges) => {
   if (!nodes || nodes.length === 0) return { nodes: [], edges };
   if (!edges) edges = [];
 
@@ -17,7 +17,6 @@ export const layoutWithStandalone = (nodes, edges) => {
   const connectedNodes = nodes.filter((n) => connectedIds.has(n.id));
   const standaloneNodes = nodes.filter((n) => !connectedIds.has(n.id));
 
-  // Avoid Dagre error on empty graph
   if (connectedNodes.length > 0) {
     connectedNodes.forEach((n) => {
       dagreGraph.setNode(n.id, { width: 200, height: 100 });
@@ -31,8 +30,8 @@ export const layoutWithStandalone = (nodes, edges) => {
     return {
       ...node,
       position: { x: pos.x, y: pos.y },
-      sourcePosition: "bottom",
-      targetPosition: "top",
+      sourcePosition: rankdir === "LR" ? "right" : "bottom",
+      targetPosition: rankdir === "LR" ? "left" : "top",
     };
   });
 
@@ -48,8 +47,8 @@ export const layoutWithStandalone = (nodes, edges) => {
         x: col * gridSpacingX,
         y: 1000 + row * gridSpacingY,
       },
-      sourcePosition: "bottom",
-      targetPosition: "top",
+      sourcePosition: rankdir === "LR" ? "right" : "bottom",
+      targetPosition: rankdir === "LR" ? "left" : "top",
     };
   });
 
