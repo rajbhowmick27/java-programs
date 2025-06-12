@@ -17,8 +17,30 @@ import ReactFlow, {
 import "reactflow/dist/style.css";
 import axios from "axios";
 
-const iconBaseUrl = "https://raw.githubusercontent.com/duffn/cloudmapper-icons/master/";
-const getIconUrl = (type) => `${iconBaseUrl}${type}.png`;
+const iconMap = {
+  Lambda: "AWS-Compute-Lambda",
+  EC2: "AWS-Compute-EC2",
+  ECS: "AWS-Compute-ECS",
+  S3: "AWS-Storage-S3",
+  DynamoDB: "AWS-Database-DynamoDB",
+  IAMRole: "AWS-Security-IAM",
+  IAMPolicy: "AWS-Security-IAM-Policy",
+  SecurityGroup: "AWS-Security-Security-Group",
+  Route53: "AWS-Network-Route-53",
+  ALB: "AWS-Network-Application-Load-Balancer",
+  VPC: "AWS-Network-VPC",
+  Subnet: "AWS-Network-Private-Subnet",
+  EBS: "AWS-Storage-EBS",
+  EFS: "AWS-Storage-EFS",
+  RDS: "AWS-Database-RDS",
+  CloudWatch: "AWS-Management-CloudWatch",
+  SNS: "AWS-Messaging-SNS",
+  SQS: "AWS-Messaging-SQS",
+  Default: "AWS-Other"
+};
+
+const getIconUrl = (type) =>
+  `https://raw.githubusercontent.com/CloudGravitas/aws-icons/main/icons/${iconMap[type] || iconMap["Default"]}.png`;
 
 const CustomNode = ({ data }) => {
   return (
@@ -42,7 +64,6 @@ function AwsGraph() {
   const [darkMode, setDarkMode] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const { fitView } = useReactFlow();
-
   const allNodesRef = React.useRef([]);
 
   useEffect(() => {
