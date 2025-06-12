@@ -1,4 +1,5 @@
 import dagre from "dagre";
+import { v4 as uuidv4 } from "uuid";
 
 export const layoutWithStandalone = (nodes, edges, rankdir = "TB") => {
   const dagreGraph = new dagre.graphlib.Graph();
@@ -8,24 +9,26 @@ export const layoutWithStandalone = (nodes, edges, rankdir = "TB") => {
   if (!nodes || nodes.length === 0) return { nodes: [], edges };
   if (!edges) edges = [];
 
-  const connectedIds = new Set();
-  edges.forEach(({ source, target }) => {
-    connectedIds.add(source);
-    connectedIds.add(target);
-  });
-
-  const connectedNodes = nodes.filter((n) => connectedIds.has(n.id));
-  const standaloneNodes = nodes.filter((n) => !connectedIds.has(n.id));
+  const connectedIds = new Set(edges.flatMap(e => [e.source, e.target]));
+  const connectedNodes = nodes.filter(n => connectedIds.has(n.id));
+  const standaloneNodes = nodes.filter(n => !connectedIds.has(n.id));
 
   if (connectedNodes.length > 0) {
-    connectedNodes.forEach((n) => {
-      dagreGraph.setNode(n.id, { width: 200, height: 100 });
-    });
-    edges.forEach((e) => dagreGraph.setEdge(e.source, e.target));
+    connectedNodes.forEach(n => dagreGraph.setNode(n.id, { width: 200, height: 100 }));
+    edges.forEach(e => dagreGraph.setEdge(e.source, e.target));
     dagre.layout(dagreGraph);
   }
 
-  const layoutedConnected = connectedNodes.map((node) => {
+  let maxX = 0, maxY = 0;
+  connectedNodes.forEach(n => {
+    const pos = dagreGraph.node(n.id);
+    if (pos) {
+      maxX = Math.max(maxX, pos.x);
+      maxY = Math.max(maxY, pos.y);
+    }
+  });
+
+  const layoutedConnected = connectedNodes.map(node => {
     const pos = dagreGraph.node(node.id) || { x: 0, y: 0 };
     return {
       ...node,
@@ -35,25 +38,59 @@ export const layoutWithStandalone = (nodes, edges, rankdir = "TB") => {
     };
   });
 
-  const gridSpacingX = 220;
-  const gridSpacingY = 160;
-  const columns = 4;
+  // Group standalone nodes inside a container node
+  const containerId = uuidv4();
+  const padding = 200;
+  const gridSpacingX = 200;
+  const gridSpacingY = 140;
+  const columns = 3;
+  const containerChildren = [];
+
+  let startX = rankdir === "LR" ? maxX + padding : 0;
+  let startY = rankdir === "LR" ? 0 : maxY + padding;
+
   const layoutedStandalone = standaloneNodes.map((node, idx) => {
     const row = Math.floor(idx / columns);
     const col = idx % columns;
+    const x = startX + col * gridSpacingX + 20;
+    const y = startY + row * gridSpacingY + 60;
+    containerChildren.push(node.id);
     return {
       ...node,
-      position: {
-        x: col * gridSpacingX,
-        y: 1000 + row * gridSpacingY,
-      },
-      sourcePosition: rankdir === "LR" ? "right" : "bottom",
-      targetPosition: rankdir === "LR" ? "left" : "top",
+      parentNode: containerId,
+      extent: 'parent',
+      position: { x, y },
     };
   });
 
+  const containerWidth = columns * gridSpacingX + 100;
+  const containerHeight = Math.ceil(standaloneNodes.length / columns) * gridSpacingY + 100;
+
+  const containerNode = {
+    id: containerId,
+    type: 'group',
+    position: { x: startX, y: startY },
+    style: {
+      width: containerWidth,
+      height: containerHeight,
+      padding: 10,
+      backgroundColor: '#f1f5f9',
+      border: '2px solid #94a3b8',
+      borderRadius: 12,
+    },
+    data: { label: 'Standalone Resources', isGroup: true },
+  };
+
   return {
-    nodes: [...layoutedConnected, ...layoutedStandalone],
+    nodes: [...layoutedConnected, ...layoutedStandalone, containerNode],
     edges,
   };
 };
+
+
+
+export const GroupNode = ({ data }) => (
+  <div style={{ padding: 10, fontWeight: 'bold' }}>
+    📦 {data.label}
+  </div>
+);
