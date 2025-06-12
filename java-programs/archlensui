@@ -1,38 +1,45 @@
-// edgeUtils.js
-export const getStyledEdge = (source, target, label, index = 0, total = 1, direction = 'TB') => {
-  const verticalOffset = (index - (total - 1) / 2) * 15;
+import { getBezierPath } from 'reactflow';
 
-  const labelTransform =
-    direction === 'LR'
-      ? `translateX(${verticalOffset}px)`
-      : `translateY(${verticalOffset}px)`;
+export const CustomSmoothStepEdge = ({
+  sourceX,
+  sourceY,
+  targetX,
+  targetY,
+  data,
+  label,
+  labelX,
+  labelY,
+  markerEnd,
+  style,
+}) => {
+  const curvature = data?.curvature ?? 0.2;
+  const [edgePath, labelXPos, labelYPos] = getBezierPath({
+    sourceX,
+    sourceY,
+    targetX,
+    targetY,
+    curvature,
+  });
 
-  return {
-    id: `e-${source}-${target}-${index}`,
-    source,
-    target,
-    type: 'smoothstep',
-    label,
-    animated: true,
-    style: {
-      stroke: '#6366f1',
-      strokeWidth: 2,
-      strokeDasharray: index % 2 === 0 ? '' : '6 3',
-    },
-    labelStyle: {
-      fontSize: 12,
-      fontWeight: 500,
-      fill: '#111827',
-      transform: labelTransform,
-    },
-    labelBgStyle: {
-      fill: '#ffffff',
-      fillOpacity: 0.85,
-      stroke: '#cbd5e1',
-      strokeWidth: 1,
-      rx: 4,
-      ry: 4,
-    },
-    labelBgPadding: [6, 4],
-  };
+  return (
+    <>
+      <path
+        id="edge-path"
+        style={style}
+        className="react-flow__edge-path"
+        d={edgePath}
+        markerEnd={markerEnd}
+      />
+      {label && (
+        <text x={labelXPos} y={labelYPos} className="edge-text" dominantBaseline="middle" textAnchor="middle">
+          {label}
+        </text>
+      )}
+    </>
+  );
+};
+
+
+const edgeTypes = {
+  smoothstep: CustomSmoothStepEdge,
 };
