@@ -1,0 +1,150 @@
+import React, { useEffect, useState, useCallback } from "react";
+import ReactFlow, {
+  ReactFlowProvider,
+  Background,
+  Controls,
+  MiniMap,
+  useNodesState,
+  useEdgesState,
+  Panel,
+  useReactFlow,
+  Handle,
+  Position,
+  toPng,
+  toSvg,
+  toJpeg
+} from "reactflow";
+import "reactflow/dist/style.css";
+import axios from "axios";
+
+const iconBaseUrl = "https://raw.githubusercontent.com/duffn/cloudmapper-icons/master/";
+const getIconUrl = (type) => `${iconBaseUrl}${type}.png`;
+
+const CustomNode = ({ data }) => {
+  return (
+    <div className="bg-white border rounded-xl shadow-md px-4 py-2 text-center min-w-[120px] cursor-move">
+      <img src={getIconUrl(data.type)} alt={data.type} className="mx-auto w-10 h-10 mb-1" />
+      <div className="text-xs font-semibold truncate">{data.label}</div>
+      <Handle type="target" position={Position.Top} style={{ background: '#555' }} />
+      <Handle type="source" position={Position.Bottom} style={{ background: '#555' }} />
+    </div>
+  );
+};
+
+const nodeTypes = {
+  custom: CustomNode
+};
+
+function AwsGraph() {
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [selectedNode, setSelectedNode] = useState(null);
+  const [darkMode, setDarkMode] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const { fitView } = useReactFlow();
+
+  const allNodesRef = React.useRef([]);
+
+  useEffect(() => {
+    axios.get("http://localhost:8080/api/graph").then((res) => {
+      const { nodes: backendNodes, edges: backendEdges } = res.data;
+
+      const formattedNodes = backendNodes.map((n, index) => ({
+        id: n.id,
+        type: "custom",
+        data: {
+          label: n.label,
+          type: n.type,
+          metadata: n.metadata
+        },
+        position: { x: (index % 5) * 300, y: Math.floor(index / 5) * 200 },
+        draggable: true
+      }));
+
+      const formattedEdges = backendEdges.map((e) => ({
+        id: `${e.from}->${e.to}`,
+        source: e.from,
+        target: e.to,
+        label: e.relationship,
+        animated: true,
+        style: { stroke: "#555" },
+        labelStyle: { fill: "#000", fontWeight: "bold", fontSize: 10 }
+      }));
+
+      allNodesRef.current = formattedNodes;
+      setNodes(formattedNodes);
+      setEdges(formattedEdges);
+    });
+  }, []);
+
+  const onNodeClick = useCallback((event, node) => {
+    setSelectedNode(node.data);
+  }, []);
+
+  const exportImage = async (format = "png") => {
+    const reactFlowWrapper = document.querySelector(".react-flow")
+    const toFunc = format === "svg" ? toSvg : format === "jpeg" ? toJpeg : toPng;
+    const image = await toFunc(reactFlowWrapper);
+    const link = document.createElement("a");
+    link.download = `aws-diagram.${format}`;
+    link.href = image;
+    link.click();
+  };
+
+  const toggleDarkMode = () => setDarkMode((prev) => !prev);
+
+  const onSearch = (e) => {
+    const value = e.target.value.toLowerCase();
+    setSearchTerm(value);
+    const filtered = allNodesRef.current.filter((n) =>
+      n.data.label.toLowerCase().includes(value) ||
+      n.data.type.toLowerCase().includes(value)
+    );
+    setNodes(filtered);
+  };
+
+  return (
+    <div className={"w-full h-screen " + (darkMode ? "bg-gray-900 text-white" : "bg-white text-black") }>
+      <ReactFlowProvider>
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onNodeClick={onNodeClick}
+          fitView
+          className="react-flow"
+        >
+          <Background />
+          <MiniMap />
+          <Controls />
+          <Panel position="top-right">
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={onSearch}
+              placeholder="Search AWS Services..."
+              className="m-1 px-2 py-1 border border-gray-400 rounded"
+            />
+            <button className="m-1 p-1 bg-blue-500 text-white rounded" onClick={() => exportImage("png")}>Export PNG</button>
+            <button className="m-1 p-1 bg-green-500 text-white rounded" onClick={() => exportImage("svg")}>Export SVG</button>
+            <button className="m-1 p-1 bg-purple-500 text-white rounded" onClick={() => exportImage("jpeg")}>Export JPEG</button>
+            <button className="m-1 p-1 bg-gray-800 text-white rounded" onClick={toggleDarkMode}>{darkMode ? "Light Mode" : "Dark Mode"}</button>
+          </Panel>
+        </ReactFlow>
+
+        {selectedNode && (
+          <div className="absolute top-0 right-0 bg-white text-black dark:bg-gray-800 dark:text-white p-4 shadow-xl h-screen overflow-y-auto w-96 z-50">
+            <h2 className="text-lg font-bold mb-2">{selectedNode.label}</h2>
+            <pre className="text-xs whitespace-pre-wrap">
+              {JSON.stringify(selectedNode.metadata, null, 2)}
+            </pre>
+          </div>
+        )}
+      </ReactFlowProvider>
+    </div>
+  );
+}
+
+export default AwsGraph;
