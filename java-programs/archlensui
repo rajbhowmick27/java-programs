@@ -1,52 +1,67 @@
-// components/CustomNode.jsx
-import React from "react";
-import { Handle, Position } from "reactflow";
+import dagre from "dagre";
+import { v4 as uuidv4 } from "uuid";
 
-// Capitalize helper
-const capitalize = (s) => s && s[0].toUpperCase() + s.slice(1);
+export const layoutWithStandalone = (nodes, edges, rankdir = "TB") => {
+  const dagreGraph = new dagre.graphlib.Graph();
+  dagreGraph.setDefaultEdgeLabel(() => ({}));
+  dagreGraph.setGraph({ rankdir, nodesep: 100, ranksep: 200 });
 
-const CustomNode = ({ data, selected }) => {
-  const { type = "Resource", name = "Unnamed", iconType = "Resource" } = data;
+  if (!nodes || nodes.length === 0) return { nodes: [], edges };
+  if (!edges) edges = [];
 
-  const iconPath = `/assets/icons/${iconType || type}.png`;
+  const connectedIds = new Set(edges.flatMap(e => [e.source, e.target]));
+  const connectedNodes = nodes.filter(n => connectedIds.has(n.id));
+  const standaloneNodes = nodes.filter(n => !connectedIds.has(n.id));
 
-  return (
-    <div
-      className={`rounded-xl border-2 p-2 w-48 shadow-md bg-white hover:shadow-lg transition duration-150 ${
-        selected ? "border-blue-600" : "border-gray-300"
-      }`}
-    >
-      <div className="flex items-center space-x-2">
-        <img
-          src={iconPath}
-          alt={type}
-          className="w-8 h-8 object-contain"
-          onError={(e) => {
-            e.target.onerror = null;
-            e.target.src = "/assets/icons/default.png"; // fallback icon
-          }}
-        />
-        <div className="flex flex-col overflow-hidden">
-          <span className="text-sm font-bold text-gray-800 truncate">
-            {capitalize(type)}
-          </span>
-          <span className="text-xs text-gray-500 truncate">{name}</span>
-        </div>
-      </div>
-
-      {/* Optional node handles */}
-      <Handle
-        type="target"
-        position={Position.Top}
-        className="w-2 h-2 bg-blue-500"
-      />
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        className="w-2 h-2 bg-blue-500"
-      />
-    </div>
+  connectedNodes.forEach(n =>
+    dagreGraph.setNode(n.id, { width: 240, height: 140 }) // Increased size
   );
-};
+  edges.forEach(e => dagreGraph.setEdge(e.source, e.target));
+  dagre.layout(dagreGraph);
 
-export default CustomNode;
+  let maxX = 0, maxY = 0;
+  connectedNodes.forEach(n => {
+    const pos = dagreGraph.node(n.id);
+    if (pos) {
+      maxX = Math.max(maxX, pos.x);
+      maxY = Math.max(maxY, pos.y);
+    }
+  });
+
+  const layoutedConnected = connectedNodes.map(node => {
+    const pos = dagreGraph.node(node.id) || { x: 0, y: 0 };
+    return {
+      ...node,
+      position: { x: pos.x, y: pos.y },
+      sourcePosition: rankdir === "LR" ? "right" : "bottom",
+      targetPosition: rankdir === "LR" ? "left" : "top",
+    };
+  });
+
+  // --- Position standalone nodes with grid spacing ---
+  const padding = 300;
+  const gridSpacingX = 300;
+  const gridSpacingY = 200;
+  const columns = 4;
+
+  const startX = rankdir === "LR" ? maxX + padding : 0;
+  const startY = rankdir === "LR" ? 0 : maxY + padding;
+
+  const layoutedStandalone = standaloneNodes.map((node, idx) => {
+    const row = Math.floor(idx / columns);
+    const col = idx % columns;
+    const x = startX + col * gridSpacingX;
+    const y = startY + row * gridSpacingY;
+    return {
+      ...node,
+      position: { x, y },
+      sourcePosition: rankdir === "LR" ? "right" : "bottom",
+      targetPosition: rankdir === "LR" ? "left" : "top",
+    };
+  });
+
+  return {
+    nodes: [...layoutedConnected, ...layoutedStandalone],
+    edges,
+  };
+};
