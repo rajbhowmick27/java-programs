@@ -5,27 +5,29 @@ dagreGraph.setDefaultEdgeLabel(() => ({}));
 dagreGraph.setGraph({ rankdir: "TB" });
 
 export const layoutWithStandalone = (nodes, edges) => {
-  const connectedNodeIds = new Set();
-  edges.forEach((e) => {
-    connectedNodeIds.add(e.source);
-    connectedNodeIds.add(e.target);
+  if (!nodes || nodes.length === 0) return { nodes: [], edges };
+  if (!edges) edges = [];
+
+  const connectedIds = new Set();
+  edges.forEach(({ source, target }) => {
+    connectedIds.add(source);
+    connectedIds.add(target);
   });
 
-  const connectedNodes = nodes.filter((n) => connectedNodeIds.has(n.id));
-  const standaloneNodes = nodes.filter((n) => !connectedNodeIds.has(n.id));
+  const connectedNodes = nodes.filter((n) => connectedIds.has(n.id));
+  const standaloneNodes = nodes.filter((n) => !connectedIds.has(n.id));
 
-  connectedNodes.forEach((node) => {
-    dagreGraph.setNode(node.id, { width: 200, height: 100 });
-  });
-
-  edges.forEach((edge) => {
-    dagreGraph.setEdge(edge.source, edge.target);
-  });
-
-  dagre.layout(dagreGraph);
+  // Avoid Dagre error on empty graph
+  if (connectedNodes.length > 0) {
+    connectedNodes.forEach((n) => {
+      dagreGraph.setNode(n.id, { width: 200, height: 100 });
+    });
+    edges.forEach((e) => dagreGraph.setEdge(e.source, e.target));
+    dagre.layout(dagreGraph);
+  }
 
   const layoutedConnected = connectedNodes.map((node) => {
-    const pos = dagreGraph.node(node.id);
+    const pos = dagreGraph.node(node.id) || { x: 0, y: 0 };
     return {
       ...node,
       position: { x: pos.x, y: pos.y },
@@ -34,9 +36,9 @@ export const layoutWithStandalone = (nodes, edges) => {
     };
   });
 
-  const gridSpacingX = 250;
-  const gridSpacingY = 150;
-  const columns = 5;
+  const gridSpacingX = 220;
+  const gridSpacingY = 160;
+  const columns = 4;
   const layoutedStandalone = standaloneNodes.map((node, idx) => {
     const row = Math.floor(idx / columns);
     const col = idx % columns;
@@ -44,7 +46,7 @@ export const layoutWithStandalone = (nodes, edges) => {
       ...node,
       position: {
         x: col * gridSpacingX,
-        y: 1000 + row * gridSpacingY, // offset below connected layout
+        y: 1000 + row * gridSpacingY,
       },
       sourcePosition: "bottom",
       targetPosition: "top",
@@ -56,15 +58,3 @@ export const layoutWithStandalone = (nodes, edges) => {
     edges,
   };
 };
-
-
-
-
-import { layoutWithStandalone } from "./layoutWithStandalone";
-
-...
-
-const { nodes: layoutedNodes, edges: layoutedEdges } = layoutWithStandalone(
-  formattedNodes,
-  formattedEdges
-);
