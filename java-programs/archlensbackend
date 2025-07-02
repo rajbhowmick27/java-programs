@@ -1,30 +1,46 @@
 import com.jcraft.jsch.*;
-import org.springframework.stereotype.Service;
 
-import java.io.File;
+import java.io.InputStream;
+import java.util.Vector;
 
-@Service
-public class SftpPemService {
+public class SFTPWithPrivateKey {
+    public static void main(String[] args) {
+        String host = "example.com";
+        String username = "your_user";
+        int port = 22;
 
-    public void uploadFileWithPem(String host, int port, String username,
-                                  String pemFilePath,
-                                  String localFilePath, String remoteFilePath) throws Exception {
+        String privateKeyPath = "/path/to/private.key";
+        String passphrase = "your_key_passphrase";  // If not encrypted, set to null
 
-        JSch jsch = new JSch();
-        jsch.addIdentity(pemFilePath); // path to your private key (.pem)
+        String remoteDir = "/remote/path/";
 
-        Session session = jsch.getSession(username, host, port);
-        session.setConfig("StrictHostKeyChecking", "no"); // Only for dev/testing
-        session.connect();
+        Session session = null;
+        ChannelSftp channelSftp = null;
 
-        ChannelSftp sftpChannel = (ChannelSftp) session.openChannel("sftp");
-        sftpChannel.connect();
+        try {
+            JSch jsch = new JSch();
+            jsch.addIdentity(privateKeyPath, passphrase);
 
-        // Upload file
-        sftpChannel.put(localFilePath, remoteFilePath);
+            session = jsch.getSession(username, host, port);
+            session.setConfig("StrictHostKeyChecking", "no");  // Use known_hosts if desired
+            session.connect();
 
-        // Cleanup
-        sftpChannel.disconnect();
-        session.disconnect();
+            Channel channel = session.openChannel("sftp");
+            channel.connect();
+
+            channelSftp = (ChannelSftp) channel;
+
+            // List files in remoteDir
+            Vector<ChannelSftp.LsEntry> files = channelSftp.ls(remoteDir);
+            for (ChannelSftp.LsEntry entry : files) {
+                System.out.println("File: " + entry.getFilename());
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            if (channelSftp != null) channelSftp.disconnect();
+            if (session != null) session.disconnect();
+        }
     }
 }
