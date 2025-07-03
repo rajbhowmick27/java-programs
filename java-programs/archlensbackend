@@ -1,46 +1,48 @@
 import com.jcraft.jsch.*;
-
-import java.io.InputStream;
+import java.io.*;
+import java.nio.file.Files;
 import java.util.Vector;
 
-public class SFTPWithPrivateKey {
-    public static void main(String[] args) {
-        String host = "example.com";
-        String username = "your_user";
+public class SFTPWithKeyFromClasspath {
+
+    public static void main(String[] args) throws Exception {
+        String host = "your.sftp.server.com";
         int port = 22;
+        String username = "your_user";
+        String passphrase = "your_key_passphrase"; // or null
 
-        String privateKeyPath = "/path/to/private.key";
-        String passphrase = "your_key_passphrase";  // If not encrypted, set to null
+        // Load the key from classpath
+        InputStream keyStream = SFTPWithKeyFromClasspath.class
+            .getClassLoader()
+            .getResourceAsStream("private_key.pem");
 
-        String remoteDir = "/remote/path/";
-
-        Session session = null;
-        ChannelSftp channelSftp = null;
-
-        try {
-            JSch jsch = new JSch();
-            jsch.addIdentity(privateKeyPath, passphrase);
-
-            session = jsch.getSession(username, host, port);
-            session.setConfig("StrictHostKeyChecking", "no");  // Use known_hosts if desired
-            session.connect();
-
-            Channel channel = session.openChannel("sftp");
-            channel.connect();
-
-            channelSftp = (ChannelSftp) channel;
-
-            // List files in remoteDir
-            Vector<ChannelSftp.LsEntry> files = channelSftp.ls(remoteDir);
-            for (ChannelSftp.LsEntry entry : files) {
-                System.out.println("File: " + entry.getFilename());
-            }
-
-        } catch (Exception e) {
-            e.printStackTrace();
-        } finally {
-            if (channelSftp != null) channelSftp.disconnect();
-            if (session != null) session.disconnect();
+        if (keyStream == null) {
+            throw new FileNotFoundException("private_key.pem not found in resources");
         }
+
+        // Write to a temp file
+        File tempKeyFile = File.createTempFile("temp_sftp_key", ".pem");
+        tempKeyFile.deleteOnExit();
+        Files.copy(keyStream, tempKeyFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+
+        JSch jsch = new JSch();
+        jsch.addIdentity(tempKeyFile.getAbsolutePath(), passphrase);
+
+        Session session = jsch.getSession(username, host, port);
+        session.setConfig("StrictHostKeyChecking", "no");
+        session.connect();
+
+        Channel channel = session.openChannel("sftp");
+        channel.connect();
+
+        ChannelSftp sftp = (ChannelSftp) channel;
+
+        Vector<ChannelSftp.LsEntry> entries = sftp.ls("/remote/path/");
+        for (ChannelSftp.LsEntry entry : entries) {
+            System.out.println(entry.getFilename());
+        }
+
+        sftp.disconnect();
+        session.disconnect();
     }
 }
