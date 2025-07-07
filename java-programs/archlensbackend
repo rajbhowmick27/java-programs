@@ -1,48 +1,108 @@
-import com.jcraft.jsch.*;
-import java.io.*;
-import java.nio.file.Files;
-import java.util.Vector;
+import java.util.*;
 
-public class SFTPWithKeyFromClasspath {
+public class BinPackingOptimized {
 
-    public static void main(String[] args) throws Exception {
-        String host = "your.sftp.server.com";
-        int port = 22;
-        String username = "your_user";
-        String passphrase = "your_key_passphrase"; // or null
+    public static List<List<Integer>> findOptimalPacking(int[] sizes, int capacity) {
+        Arrays.sort(sizes); // ascending
+        int totalSum = Arrays.stream(sizes).sum();
 
-        // Load the key from classpath
-        InputStream keyStream = SFTPWithKeyFromClasspath.class
-            .getClassLoader()
-            .getResourceAsStream("private_key.pem");
+        // Binary search on bucket count
+        int lo = 1, hi = sizes.length;
+        List<List<Integer>> bestPacking = null;
 
-        if (keyStream == null) {
-            throw new FileNotFoundException("private_key.pem not found in resources");
+        while (lo <= hi) {
+            int mid = (lo + hi) / 2;
+
+            if (totalSum > mid * capacity) {
+                lo = mid + 1; // even if packed perfectly, it's too tight
+                continue;
+            }
+
+            List<List<Integer>> attempt = tryFit(sizes, capacity, mid);
+            if (attempt != null) {
+                bestPacking = attempt;
+                hi = mid - 1; // try fewer
+            } else {
+                lo = mid + 1;
+            }
         }
 
-        // Write to a temp file
-        File tempKeyFile = File.createTempFile("temp_sftp_key", ".pem");
-        tempKeyFile.deleteOnExit();
-        Files.copy(keyStream, tempKeyFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        return bestPacking;
+    }
 
-        JSch jsch = new JSch();
-        jsch.addIdentity(tempKeyFile.getAbsolutePath(), passphrase);
+    private static List<List<Integer>> tryFit(int[] sizes, int capacity, int k) {
+        // Descending order (largest size first)
+        Integer[] items = Arrays.stream(sizes).boxed()
+                .sorted(Comparator.reverseOrder()).toArray(Integer[]::new);
 
-        Session session = jsch.getSession(username, host, port);
-        session.setConfig("StrictHostKeyChecking", "no");
-        session.connect();
+        TreeSet<Bucket> buckets = new TreeSet<>();
 
-        Channel channel = session.openChannel("sftp");
-        channel.connect();
-
-        ChannelSftp sftp = (ChannelSftp) channel;
-
-        Vector<ChannelSftp.LsEntry> entries = sftp.ls("/remote/path/");
-        for (ChannelSftp.LsEntry entry : entries) {
-            System.out.println(entry.getFilename());
+        for (int i = 0; i < k; i++) {
+            buckets.add(new Bucket(i, capacity));
         }
 
-        sftp.disconnect();
-        session.disconnect();
+        for (int size : items) {
+            // Find best-fit: first bucket with remaining >= size
+            Bucket temp = new Bucket(-1, size);
+            Bucket chosen = buckets.ceiling(temp); // Most remaining space ≥ size
+
+            if (chosen == null) return null; // no fit
+
+            buckets.remove(chosen);
+            chosen.add(size);
+            buckets.add(chosen);
+        }
+
+        // Convert to result
+        List<List<Integer>> result = new ArrayList<>();
+        for (int i = 0; i < k; i++) result.add(new ArrayList<>()); // init
+        for (Bucket b : buckets) result.set(b.id, b.contents);
+        return result;
+    }
+
+    static class Bucket implements Comparable<Bucket> {
+        int id;
+        int remaining;
+        List<Integer> contents = new ArrayList<>();
+
+        Bucket(int id, int remaining) {
+            this.id = id;
+            this.remaining = remaining;
+        }
+
+        void add(int size) {
+            contents.add(size);
+            remaining -= size;
+        }
+
+        @Override
+        public int compareTo(Bucket o) {
+            if (this.remaining != o.remaining)
+                return Integer.compare(o.remaining, this.remaining); // descending
+            return Integer.compare(this.id, o.id); // tie-breaker
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            return obj instanceof Bucket && ((Bucket) obj).id == this.id;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(id);
+        }
+    }
+
+    public static void main(String[] args) {
+        int[] sizes = {120, 250, 200, 180, 50, 220, 300, 100, 90, 240, 110, 60};
+        int capacity = 500;
+
+        List<List<Integer>> result = findOptimalPacking(sizes, capacity);
+
+        int i = 1;
+        for (List<Integer> bucket : result) {
+            System.out.println("Bucket " + (i++) + ": " + bucket + " → total = " +
+                bucket.stream().mapToInt(Integer::intValue).sum());
+        }
     }
 }
