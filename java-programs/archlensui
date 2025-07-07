@@ -1,45 +1,26 @@
-import { getBezierPath } from 'reactflow';
+import React from 'react';
+import ReactJson from 'react-json-view';
 
-export const CustomSmoothStepEdge = ({
-  sourceX,
-  sourceY,
-  targetX,
-  targetY,
-  data,
-  label,
-  labelX,
-  labelY,
-  markerEnd,
-  style,
-}) => {
-  const curvature = data?.curvature ?? 0.2;
-  const [edgePath, labelXPos, labelYPos] = getBezierPath({
-    sourceX,
-    sourceY,
-    targetX,
-    targetY,
-    curvature,
-  });
-
-  return (
-    <>
-      <path
-        id="edge-path"
-        style={style}
-        className="react-flow__edge-path"
-        d={edgePath}
-        markerEnd={markerEnd}
-      />
-      {label && (
-        <text x={labelXPos} y={labelYPos} className="edge-text" dominantBaseline="middle" textAnchor="middle">
-          {label}
-        </text>
-      )}
-    </>
-  );
+const jsonData = {
+  name: "Alice",
+  email: "alice@example.com",
+  profile: {
+    age: 30,
+    city: "Wonderland"
+  }
 };
 
+const App = () => (
+  <div style={{ padding: 20 }}>
+    <h3>JSON Preview</h3>
+    <ReactJson
+      src={jsonData}
+      enableClipboard={true}
+      displayDataTypes={false}
+      displayObjectSize={false}
+      theme="monokai" // or "rjv-default", "summerfruit", etc.
+    />
+  </div>
+);
 
-const edgeTypes = {
-  smoothstep: CustomSmoothStepEdge,
-};
+export default App;
