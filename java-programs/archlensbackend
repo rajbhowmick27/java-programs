@@ -1,108 +1,141 @@
-import java.util.*;
+class FileMeta {
+    String name;
+    long sizeInBytes;
 
-public class BinPackingOptimized {
+    FileMeta(String name, long sizeInBytes) {
+        this.name = name;
+        this.sizeInBytes = sizeInBytes;
+    }
+}
 
-    public static List<List<Integer>> findOptimalPacking(int[] sizes, int capacity) {
-        Arrays.sort(sizes); // ascending
-        int totalSum = Arrays.stream(sizes).sum();
+class Bucket implements Comparable<Bucket> {
+    int id;
+    long remaining;
+    List<FileMeta> contents = new ArrayList<>();
 
-        // Binary search on bucket count
-        int lo = 1, hi = sizes.length;
-        List<List<Integer>> bestPacking = null;
+    Bucket(int id, long remaining) {
+        this.id = id;
+        this.remaining = remaining;
+    }
 
-        while (lo <= hi) {
-            int mid = (lo + hi) / 2;
+    void add(FileMeta file) {
+        contents.add(file);
+        remaining -= file.sizeInBytes;
+    }
 
-            if (totalSum > mid * capacity) {
-                lo = mid + 1; // even if packed perfectly, it's too tight
-                continue;
+    @Override
+    public int compareTo(Bucket o) {
+        int cmp = Long.compare(this.remaining, o.remaining);
+        return cmp == 0 ? Integer.compare(this.id, o.id) : cmp;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        return obj instanceof Bucket && this.id == ((Bucket) obj).id;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(id);
+    }
+}
+
+
+
+
+
+private static int greedyFit(List<FileMeta> files) {
+    List<Long> sizes = files.stream()
+        .map(f -> f.sizeInBytes)
+        .sorted(Comparator.reverseOrder())
+        .collect(Collectors.toList());
+
+    List<Long> buckets = new ArrayList<>();
+
+    for (long size : sizes) {
+        boolean placed = false;
+        for (int i = 0; i < buckets.size(); i++) {
+            if (buckets.get(i) + size <= BUCKET_CAPACITY) {
+                buckets.set(i, buckets.get(i) + size);
+                placed = true;
+                break;
             }
-
-            List<List<Integer>> attempt = tryFit(sizes, capacity, mid);
-            if (attempt != null) {
-                bestPacking = attempt;
-                hi = mid - 1; // try fewer
-            } else {
-                lo = mid + 1;
-            }
         }
-
-        return bestPacking;
+        if (!placed) buckets.add(size);
     }
 
-    private static List<List<Integer>> tryFit(int[] sizes, int capacity, int k) {
-        // Descending order (largest size first)
-        Integer[] items = Arrays.stream(sizes).boxed()
-                .sorted(Comparator.reverseOrder()).toArray(Integer[]::new);
+    return buckets.size();
+}
 
-        TreeSet<Bucket> buckets = new TreeSet<>();
 
-        for (int i = 0; i < k; i++) {
-            buckets.add(new Bucket(i, capacity));
-        }
 
-        for (int size : items) {
-            // Find best-fit: first bucket with remaining >= size
-            Bucket temp = new Bucket(-1, size);
-            Bucket chosen = buckets.ceiling(temp); // Most remaining space ≥ size
 
-            if (chosen == null) return null; // no fit
 
-            buckets.remove(chosen);
-            chosen.add(size);
-            buckets.add(chosen);
-        }
+public static List<List<FileMeta>> packFilesOptimally(List<FileMeta> files) {
+    long totalSize = files.stream().mapToLong(f -> f.sizeInBytes).sum();
+    int lo = (int) Math.ceil((double) totalSize / BUCKET_CAPACITY);
+    int hi = greedyFit(files);
+    List<List<FileMeta>> result = null;
 
-        // Convert to result
-        List<List<Integer>> result = new ArrayList<>();
-        for (int i = 0; i < k; i++) result.add(new ArrayList<>()); // init
-        for (Bucket b : buckets) result.set(b.id, b.contents);
-        return result;
-    }
-
-    static class Bucket implements Comparable<Bucket> {
-        int id;
-        int remaining;
-        List<Integer> contents = new ArrayList<>();
-
-        Bucket(int id, int remaining) {
-            this.id = id;
-            this.remaining = remaining;
-        }
-
-        void add(int size) {
-            contents.add(size);
-            remaining -= size;
-        }
-
-        @Override
-        public int compareTo(Bucket o) {
-            if (this.remaining != o.remaining)
-                return Integer.compare(o.remaining, this.remaining); // descending
-            return Integer.compare(this.id, o.id); // tie-breaker
-        }
-
-        @Override
-        public boolean equals(Object obj) {
-            return obj instanceof Bucket && ((Bucket) obj).id == this.id;
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash(id);
+    while (lo <= hi) {
+        int mid = (lo + hi) / 2;
+        List<List<FileMeta>> candidate = tryFit(files, mid);
+        if (candidate != null) {
+            result = candidate;
+            hi = mid - 1;
+        } else {
+            lo = mid + 1;
         }
     }
 
-    public static void main(String[] args) {
-        int[] sizes = {120, 250, 200, 180, 50, 220, 300, 100, 90, 240, 110, 60};
-        int capacity = 500;
+    return result;
+}
 
-        List<List<Integer>> result = findOptimalPacking(sizes, capacity);
 
-        int i = 1;
-        for (List<Integer> bucket : result) {
-            System.out.println("Bucket " + (i++) + ": " + bucket + " → total = " +
-                bucket.stream().mapToInt(Integer::intValue).sum());
+
+
+private static List<List<FileMeta>> tryFit(List<FileMeta> files, int bucketCount) {
+    TreeSet<Bucket> buckets = new TreeSet<>();
+    for (int i = 0; i < bucketCount; i++) {
+        buckets.add(new Bucket(i, BUCKET_CAPACITY));
+    }
+
+    for (FileMeta file : files) {
+        Bucket target = buckets.ceiling(new Bucket(-1, file.sizeInBytes));
+        if (target == null) return null;
+
+        buckets.remove(target);
+        target.add(file);
+        buckets.add(target);
+    }
+
+    List<List<FileMeta>> result = new ArrayList<>();
+    for (int i = 0; i < bucketCount; i++) result.add(new ArrayList<>());
+    for (Bucket b : buckets) result.set(b.id, b.contents);
+
+    return result;
+}
+
+
+
+
+
+public static void main(String[] args) {
+    List<FileMeta> files = new ArrayList<>();
+    files.add(new FileMeta("file1.pdf", 100L * 1024 * 1024)); // 100 MB
+    files.add(new FileMeta("file2.pdf", 300L * 1024 * 1024)); // 300 MB
+    files.add(new FileMeta("file3.pdf", 250L * 1024 * 1024)); // 250 MB
+    files.add(new FileMeta("file4.pdf", 150L * 1024 * 1024)); // etc.
+    files.add(new FileMeta("file5.pdf", 200L * 1024 * 1024));
+    files.add(new FileMeta("file6.pdf", 400L * 1024 * 1024));
+    files.add(new FileMeta("file7.pdf", 180L * 1024 * 1024));
+
+    List<List<FileMeta>> result = packFilesOptimally(files);
+
+    for (int i = 0; i < result.size(); i++) {
+        System.out.println("Bucket " + (i + 1) + ":");
+        for (FileMeta f : result.get(i)) {
+            System.out.println("  " + f.name + " (" + f.sizeInBytes / (1024 * 1024) + " MB)");
         }
     }
 }
