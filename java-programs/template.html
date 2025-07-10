@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="UTF-8" />
+  <title>Cover Page</title>
+  <style>
+    body {
+      font-family: "Times New Roman", serif;
+      color: #000;
+      background-color: #fff;
+      margin: 2cm;
+    }
+
+    .header {
+      text-align: center;
+      font-size: 28px;
+      font-weight: bold;
+      margin-bottom: 1.2cm;
+      border-bottom: 1px solid #000;
+      padding-bottom: 6px;
+    }
+
+    .section {
+      margin-bottom: 1.2cm;
+    }
+
+    .section-title {
+      font-size: 18px;
+      font-weight: bold;
+      border-bottom: 1px solid #555;
+      margin-bottom: 0.8cm;
+      padding-bottom: 4px;
+    }
+
+    .info-row {
+      margin-bottom: 8px;
+    }
+
+    .field-label {
+      display: inline-block;
+      width: 180px;
+      font-weight: bold;
+    }
+
+    table.audit-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+      table-layout: fixed;
+      word-wrap: break-word;
+    }
+
+    .audit-table th,
+    .audit-table td {
+      border: 1px solid #333;
+      padding: 8px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .audit-table th {
+      background-color: #f0f0f0;
+    }
+
+    .audit-table td.comments {
+      white-space: pre-wrap;
+    }
+
+    .footer {
+      text-align: center;
+      font-size: 12px;
+      position: fixed;
+      bottom: 1cm;
+      left: 0;
+      right: 0;
+      border-top: 1px solid #000;
+      padding-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">Cover Page</div>
+
+  <!-- Section 1: Account Details -->
+  <div class="section">
+    <div class="section-title">Section 1 – Account Details</div>
+    <div class="info-row">
+      <span class="field-label">Account Number:</span> <span th:text="${accountNumber}">[Account Number]</span>
+    </div>
+    <div class="info-row">
+      <span class="field-label">SSN:</span> <span th:text="${ssn}">[SSN]</span>
+    </div>
+    <div class="info-row">
+      <span class="field-label">Letter Received Date:</span> <span th:text="${letterReceivedDate}">[Date]</span>
+    </div>
+  </div>
+
+  <!-- Section 2: Maintenance Audit History -->
+  <div class="section">
+    <div class="section-title">Section 2 – Maintenance Audit History</div>
+    <table class="audit-table">
+      <thead>
+        <tr>
+          <th style="width: 15%;">Timestamp</th>
+          <th style="width: 15%;">Stage</th>
+          <th style="width: 15%;">Assigned To</th>
+          <th style="width: 10%;">Role</th>
+          <th style="width: 45%;">Comments</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr th:each="entry : ${auditEntries}">
+          <td th:text="${entry.timestamp}">[Timestamp]</td>
+          <td th:text="${entry.stage}">[Stage]</td>
+          <td th:text="${entry.assignedTo ?: '—'}">[Assigned To]</td>
+          <td th:text="${entry.role}">[Role]</td>
+          <td th:text="${entry.comments}" class="comments">[Comments]</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+</body>
+</html>
