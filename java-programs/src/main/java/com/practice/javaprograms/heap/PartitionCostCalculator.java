@@ -2,6 +2,22 @@ import java.util.*;
 
 public class PartitionCostCalculator {
 
+// Between any two elements, the cost of "splitting" (creating a partition) is:
+
+// cost[i] + cost[i+1] (because a partition will start at i+1 and end at i)
+
+// There will be exactly k partitions, so we need to select k-1 split points.
+
+// Therefore:
+
+// To maximize total cost: pick the k-1 largest cost[i] + cost[i+1]
+
+// To minimize total cost: pick the k-1 smallest cost[i] + cost[i+1]
+
+// Total cost:
+
+// cost[0] + cost[n-1] + sum(k-1 partition costs from step 3)
+
     public static int[] minMaxPartitionCost(int[] cost, int k) {
         int n = cost.length;
         if (k > n) {
