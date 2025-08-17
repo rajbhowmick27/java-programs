@@ -1,103 +1,14 @@
-package com.example.lambda;
-
-import com.amazonaws.services.lambda.runtime.Context;
-import com.amazonaws.services.lambda.runtime.RequestHandler;
-import com.amazonaws.services.lambda.runtime.events.S3Event;
-
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.Path;
-import org.apache.parquet.hadoop.ParquetFileReader;
-import org.apache.parquet.hadoop.metadata.BlockMetaData;
-import org.apache.parquet.hadoop.util.HadoopInputFile;
-import org.apache.parquet.schema.MessageType;
-
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.web.client.RestTemplate;
-
-import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
-import software.amazon.awssdk.core.ResponseInputStream;
-import software.amazon.awssdk.regions.Region;
-import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.GetObjectRequest;
-import software.amazon.awssdk.services.s3.model.S3EventNotification;
-import software.amazon.awssdk.services.s3.model.S3Object;
-
-import java.io.File;
-import java.io.FileOutputStream;
-import java.util.List;
-import java.util.UUID;
-
-public class S3ParquetLambda implements RequestHandler<S3Event, String> {
-
-    private static final Region REGION = Region.AP_SOUTH_1;
-    private static final S3Client s3Client = S3Client.builder()
-            .region(REGION)
-            .credentialsProvider(DefaultCredentialsProvider.create())
-            .build();
-
-    private static final RestTemplate restTemplate = new RestTemplate();
-    private static final String TARGET_API_URL = "https://example.com/record-count";
-
-    @Override
-    public String handleRequest(S3Event event, Context context) {
-        try {
-            S3EventNotification.S3EventNotificationRecord record = event.getRecords().get(0);
-            String bucketName = record.getS3().getBucket().getName();
-            String key = record.getS3().getObject().getKey();
-
-            if (!key.endsWith(".parquet")) {
-                return "Not a Parquet file. Ignoring.";
-            }
-
-            File tempFile = downloadFile(bucketName, key);
-            long recordCount = countParquetRecordsFromFooter(tempFile);
-
-            // REST call
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-
-            String jsonBody = String.format("{\"recordCount\": %d}", recordCount);
-            HttpEntity<String> requestEntity = new HttpEntity<>(jsonBody, headers);
-
-            String response = restTemplate.postForObject(TARGET_API_URL, requestEntity, String.class);
-            return "Success: " + response;
-
-        } catch (Exception e) {
-            e.printStackTrace();
-            return "Error: " + e.getMessage();
-        }
-    }
-
-    private File downloadFile(String bucketName, String key) throws Exception {
-        GetObjectRequest getObjectRequest = GetObjectRequest.builder()
-                .bucket(bucketName)
-                .key(key)
-                .build();
-
-        ResponseInputStream<?> objectData = s3Client.getObject(getObjectRequest);
-
-        File tempFile = File.createTempFile(UUID.randomUUID().toString(), ".parquet");
-        try (FileOutputStream out = new FileOutputStream(tempFile)) {
-            objectData.transferTo(out);
-        }
-        return tempFile;
-    }
-
-    private long countParquetRecordsFromFooter(File parquetFile) throws Exception {
-        Configuration conf = new Configuration();
-        Path path = new Path(parquetFile.getAbsolutePath());
-
-        try (ParquetFileReader reader = ParquetFileReader.open(
-                HadoopInputFile.fromPath(path, conf))) {
-
-            List<BlockMetaData> blocks = reader.getRowGroups();
-            long totalCount = 0;
-            for (BlockMetaData block : blocks) {
-                totalCount += block.getRowCount();
-            }
-            return totalCount;
-        }
-    }
-}
+SELECT CASE
+         WHEN DBMS_LOB.COMPARE(
+              REGEXP_REPLACE(
+                REGEXP_REPLACE(c1.clob_col, '"(ignoreField1|ignoreField2|ignoreField3)":"[^"]*"', ''), 
+                '\s+', ''),   -- remove whitespace after removing fields
+              REGEXP_REPLACE(
+                REGEXP_REPLACE(c2.clob_col, '"(ignoreField1|ignoreField2|ignoreField3)":"[^"]*"', ''), 
+                '\s+', '')
+              ) = 0
+         THEN 'MATCH'
+         ELSE 'DIFFERENT'
+       END AS comparison_result
+FROM table1 c1
+JOIN table2 c2 ON c1.id = c2.id;
