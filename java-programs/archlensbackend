@@ -1,18 +1,5 @@
-SELECT CASE
-         WHEN DBMS_LOB.COMPARE(
-              REGEXP_REPLACE(
-                REGEXP_REPLACE(
-                  REGEXP_REPLACE(c1.clob_col, '"ignoreField1":".*?"', ''),
-                  '"ignoreField2":".*?"', ''),
-                '"ignoreField3":".*?"', ''),
-              REGEXP_REPLACE(
-                REGEXP_REPLACE(
-                  REGEXP_REPLACE(c2.clob_col, '"ignoreField1":".*?"', ''),
-                  '"ignoreField2":".*?"', ''),
-                '"ignoreField3":".*?"', '')
-              ) = 0
-         THEN 'MATCH'
-         ELSE 'DIFFERENT'
-       END AS comparison_result
-FROM table1 c1
-JOIN table2 c2 ON c1.id = c2.id;
+SELECT JSON_OBJECT(
+         'fieldA' VALUE JSON_VALUE(c.clob_col, '$.fieldA'),
+         'fieldB' VALUE JSON_VALUE(c.clob_col, '$.fieldB')
+       RETURNING CLOB) AS new_clob
+FROM my_table c;
