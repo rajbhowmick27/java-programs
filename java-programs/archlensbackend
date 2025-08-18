@@ -1,11 +1,15 @@
 SELECT CASE
          WHEN DBMS_LOB.COMPARE(
               REGEXP_REPLACE(
-                REGEXP_REPLACE(c1.clob_col, '"(ignoreField1|ignoreField2|ignoreField3)":"[^"]*"', ''), 
-                '\s+', ''),   -- remove whitespace after removing fields
+                REGEXP_REPLACE(
+                  REGEXP_REPLACE(c1.clob_col, '"ignoreField1":".*?"', ''),
+                  '"ignoreField2":".*?"', ''),
+                '"ignoreField3":".*?"', ''),
               REGEXP_REPLACE(
-                REGEXP_REPLACE(c2.clob_col, '"(ignoreField1|ignoreField2|ignoreField3)":"[^"]*"', ''), 
-                '\s+', '')
+                REGEXP_REPLACE(
+                  REGEXP_REPLACE(c2.clob_col, '"ignoreField1":".*?"', ''),
+                  '"ignoreField2":".*?"', ''),
+                '"ignoreField3":".*?"', '')
               ) = 0
          THEN 'MATCH'
          ELSE 'DIFFERENT'
