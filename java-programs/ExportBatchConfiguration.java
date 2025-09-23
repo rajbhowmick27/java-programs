@@ -3,6 +3,12 @@
 public class ExportJobConfig {
 
     @Bean
+    public ManifestJobListener manifestJobListener(AmazonS3 s3Client,
+                                                   @Value("${app.s3.bucket}") String bucketName) {
+        return new ManifestJobListener(s3Client, bucketName);
+    }
+
+    @Bean
     public Partitioner partitioner(DataSource dataSource) {
         return new TimestampRangePartitioner(dataSource);
     }
@@ -76,12 +82,25 @@ public class ExportJobConfig {
 
     @Bean
     public TaskExecutor taskExecutor() {
-        return new SimpleAsyncTaskExecutor("partition-worker-");
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(8);   // match gridSize
+        executor.setMaxPoolSize(16);
+        executor.setQueueCapacity(16);
+        executor.setThreadNamePrefix("partition-worker-");
+        executor.initialize();
+        return executor;
     }
 
+
+    // @Bean
+    // public TaskExecutor taskExecutor() {
+    //     return new SimpleAsyncTaskExecutor("partition-worker-");
+    // }
+
     @Bean
-    public Job exportJob(JobBuilderFactory jobBuilderFactory, Step partitionedStep) {
+    public Job exportJob(JobBuilderFactory jobBuilderFactory, Step partitionedStep,ManifestJobListener manifestJobListener) {
         return jobBuilderFactory.get("exportJob")
+                .listener(manifestJobListener)
                 .start(partitionedStep)
                 .build();
     }
