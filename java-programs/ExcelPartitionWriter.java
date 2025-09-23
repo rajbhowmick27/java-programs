@@ -47,7 +47,12 @@ public class ExcelPartitionWriter implements ItemWriter<MyEntity>, ItemStream {
                 workbook.write(fos);
                 fos.flush();
                 if (currentFile.length() >= maxBytes) {
-                    closeAndUpload();
+                    // Without expiration
+                    closeAndUpload(Optional.empty());
+                    
+                    // With expiration of 7 days
+                    // closeAndUpload(Optional.of(Duration.ofDays(7)));
+                    
                     startNewFile();
                 }
             }
@@ -81,27 +86,43 @@ public class ExcelPartitionWriter implements ItemWriter<MyEntity>, ItemStream {
         // Add more columns as needed
     }
 
-    private void closeAndUpload() throws Exception {
+    private void closeAndUpload(Optional<Duration> expirationOpt) throws Exception {
         workbook.write(fos);
         fos.close();
         workbook.dispose();
         workbook.close();
-
+    
         String s3Key = "exports/" + currentFile.getName();
         s3Client.putObject(bucketName, s3Key, currentFile);
-
-        // Add metadata to partition-local manifest
+    
+        String downloadUrl;
+        if (expirationOpt.isPresent()) {
+            // Generate pre-signed URL with expiration
+            Date expiration = Date.from(Instant.now().plus(expirationOpt.get()));
+            GeneratePresignedUrlRequest presignedRequest =
+                    new GeneratePresignedUrlRequest(bucketName, s3Key)
+                            .withMethod(HttpMethod.GET)
+                            .withExpiration(expiration);
+            downloadUrl = s3Client.generatePresignedUrl(presignedRequest).toString();
+        } else {
+            // Generate URL without expiration (public URL style)
+            downloadUrl = s3Client.getUrl(bucketName, s3Key).toString();
+        }
+    
+        // Add metadata to manifest
         Map<String, Object> meta = new LinkedHashMap<>();
         meta.put("fileName", currentFile.getName());
         meta.put("s3Key", s3Key);
         meta.put("sizeBytes", currentFile.length());
         meta.put("rowCount", currentRow);
+        meta.put("downloadUrl", downloadUrl);
         manifestEntries.add(meta);
-
+    
         currentFile.delete();
         workbook = null;
         fos = null;
     }
+
 
     // ------------------- ItemStream methods -------------------
 
