@@ -84,4 +84,22 @@ JOIN v$sql q ON s.sql_id = q.sql_id
 WHERE q.sql_text LIKE '%DBMS_STATS.GATHER%';
 
 
+-- Check running jobs
+SELECT job_name, status, actual_start_date, run_duration
+FROM dba_scheduler_job_run_details
+WHERE job_name LIKE '%STATS%'
+ORDER BY actual_start_date DESC FETCH FIRST 5 ROWS ONLY;
+
+-- Check any running session
+SELECT s.sid, s.serial#, s.username, s.program
+FROM v$session s
+WHERE s.module LIKE 'DBMS_STATS%';
+
+-- Schema-level stats freshness
+SELECT COUNT(*) AS stale_stats_count
+FROM dba_tab_statistics
+WHERE owner = 'YOUR_SCHEMA' AND stale_stats = 'YES';
+
+
+
 
