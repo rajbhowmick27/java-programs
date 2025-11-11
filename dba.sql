@@ -24,5 +24,27 @@ SELECT name, value, isdefault, isses_modifiable, issys_modifiable
 FROM v$parameter
 WHERE name IN ('workarea_size_policy', 'parallel_degree_policy');
 
-SHOW PARAMETER workarea_size_policy
-SHOW PARAMETER parallel_degree_policy
+SELECT
+    tablespace_name,
+    ROUND(SUM(phyblkwrt) * 8192 / 1024 / 1024, 2) AS total_mb_written,
+    ROUND(SUM(phyblkwrt) / (SUM(elapsed_time) / 1000), 2) AS approx_iops
+FROM v$tempstat
+GROUP BY tablespace_name;
+
+SELECT
+    s.sid,
+    s.serial#,
+    s.username,
+    s.program,
+    su.tablespace,
+    ROUND(su.blocks * 8192 / 1024 / 1024, 2) AS temp_used_mb
+FROM v$sort_usage su
+JOIN v$session s ON su.session_addr = s.saddr
+ORDER BY temp_used_mb DESC;
+
+SELECT
+    name,
+    ROUND(value/1024/1024, 2) AS mb
+FROM v$sysstat
+WHERE name LIKE 'physical write total bytes%' OR name LIKE 'physical write direct temporary tablespace%';
+
