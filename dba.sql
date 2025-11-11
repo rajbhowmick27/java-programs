@@ -72,4 +72,16 @@ FROM v$filestat f
 JOIN dba_temp_files t ON f.file# = t.file_id
 JOIN v$instance i ON 1=1;
 
+SELECT
+    s.sid,
+    s.serial#,
+    s.username,
+    s.program,
+    q.sql_id,
+    q.sql_text
+FROM v$session s
+JOIN v$sql q ON s.sql_id = q.sql_id
+WHERE q.sql_text LIKE '%DBMS_STATS.GATHER%';
+
+
 
