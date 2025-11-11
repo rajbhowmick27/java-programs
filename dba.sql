@@ -18,3 +18,11 @@ WHERE name IN ('total PGA allocated','total PGA inuse','maximum PGA allocated');
 
 
 SELECT * FROM v$sysstat WHERE name LIKE 'workarea executions - %';
+
+
+SELECT name, value, isdefault, isses_modifiable, issys_modifiable
+FROM v$parameter
+WHERE name IN ('workarea_size_policy', 'parallel_degree_policy');
+
+SHOW PARAMETER workarea_size_policy
+SHOW PARAMETER parallel_degree_policy
