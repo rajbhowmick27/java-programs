@@ -48,3 +48,28 @@ SELECT
 FROM v$sysstat
 WHERE name LIKE 'physical write total bytes%' OR name LIKE 'physical write direct temporary tablespace%';
 
+
+SELECT
+    file_id,
+    file_name,
+    tablespace_name,
+    phyrds AS reads,
+    phywrts AS writes,
+    ROUND(phywrts / ((SYSDATE - startup_time) * 24 * 60 * 60), 2) AS avg_write_iops
+FROM v$filestat f
+JOIN dba_data_files d ON f.file# = d.file_id
+CROSS JOIN (SELECT startup_time FROM v$instance)
+ORDER BY avg_write_iops DESC;
+
+
+SELECT
+    f.file#,
+    t.file_name,
+    t.tablespace_name,
+    f.phywrts,
+    ROUND(f.phywrts / ((SYSDATE - i.startup_time) * 24*60*60), 2) AS avg_write_iops
+FROM v$filestat f
+JOIN dba_temp_files t ON f.file# = t.file_id
+JOIN v$instance i ON 1=1;
+
+
