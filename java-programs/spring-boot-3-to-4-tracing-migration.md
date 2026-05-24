@@ -10,7 +10,9 @@ This migration guide ensures:
 - Backward compatibility with B3 headers
 - W3C trace propagation support
 - JMS listener tracing support
+- JMS publisher tracing propagation
 - Async thread trace propagation
+- Safe ThreadLocal/MDC cleanup
 - No OTLP exporter errors
 - No dependency on external tracing backend
 
@@ -166,22 +168,72 @@ This helps mixed environments during migration.
 
 ---
 
-# 7. logback.xml Configuration
+# 7. Logging Configuration
 
-## Recommended logback.xml
+## Why logback.xml Gets Renamed
+
+Spring Boot rewrite recipes commonly rename:
+
+```text
+logback.xml
+```
+
+to:
+
+```text
+logback-spring.xml
+```
+
+This is expected and recommended.
+
+---
+
+# 8. Difference Between logback.xml vs logback-spring.xml
+
+| File | Spring-Aware | Recommended |
+|---|---|---|
+| logback.xml | No | Older/basic |
+| logback-spring.xml | Yes | Recommended |
+
+`logback-spring.xml` supports:
+- Spring profiles
+- Environment properties
+- `<springProperty>`
+- Dynamic configuration
+
+---
+
+# 9. Recommended Logging File
+
+Use:
+
+```text
+src/main/resources/logback-spring.xml
+```
+
+---
+
+# 10. Recommended logback-spring.xml
 
 ```xml
+<?xml version="1.0" encoding="UTF-8"?>
+
 <configuration>
 
+    <springProperty
+            scope="context"
+            name="APP_NAME"
+            source="spring.application.name"/>
+
     <property
-            name="CONSOLE_LOG_PATTERN"
-            value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} traceId=%X{traceId:-} spanId=%X{spanId:-} - %msg%n"/>
+            name="LOG_PATTERN"
+            value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level ${APP_NAME} %logger{36} traceId=%X{traceId:-} spanId=%X{spanId:-} - %msg%n"/>
 
     <appender name="CONSOLE"
               class="ch.qos.logback.core.ConsoleAppender">
 
         <encoder>
-            <pattern>${CONSOLE_LOG_PATTERN}</pattern>
+            <pattern>${LOG_PATTERN}</pattern>
         </encoder>
 
     </appender>
@@ -195,7 +247,52 @@ This helps mixed environments during migration.
 
 ---
 
-# 8. Expected Logs
+# 11. Why This Logging Pattern Matters
+
+This pattern provides:
+
+- traceId
+- spanId
+- thread name
+- service name
+- logger name
+
+Example:
+
+```text
+2026-05-24 22:10:11.123 [DefaultMessageListenerContainer-1]
+INFO payment-service
+traceId=abc123
+spanId=xyz789
+com.test.PaymentListener
+- Processing JMS message
+```
+
+---
+
+# 12. Important JMS Logging Clarification
+
+NO special JMS-specific logback.xml changes are required.
+
+JMS tracing works through:
+- MDC propagation
+- tracing scope restoration
+- listener executor propagation
+
+NOT through custom logback appenders.
+
+As long as this exists:
+
+```xml
+%X{traceId:-}
+%X{spanId:-}
+```
+
+JMS logs automatically print traceId.
+
+---
+
+# 13. Expected Logs
 
 Example:
 
@@ -205,23 +302,136 @@ Example:
 
 ---
 
-# 9. JMS Listener Tracing
+# 14. JMS Publisher → Listener Trace Propagation
+
+## Scenario
+
+```text
+Service A
+   ↓
+Publishes JMS Message to Topic
+   ↓
+Broker Fanout
+   ↓
+Queue Subscription
+   ↓
+Service B JMS Listener
+   ↓
+Calls REST API
+```
+
+---
+
+# 15. What Happens Automatically
+
+Publisher side:
+
+```text
+Current Span
+    ↓
+JMS Header Injection
+```
+
+Listener side:
+
+```text
+JMS Header Extraction
+    ↓
+Create Consumer Span
+    ↓
+Put traceId in MDC
+    ↓
+Listener executes
+```
+
+REST propagation:
+
+```text
+Current Trace
+    ↓
+HTTP Header Injection
+    ↓
+Downstream service continues same trace
+```
+
+---
+
+# 16. JMS Trace Headers
+
+Micrometer/OpenTelemetry automatically injects:
+
+## W3C
+
+```text
+traceparent
+tracestate
+baggage
+```
+
+## B3 Compatibility
+
+```text
+X-B3-TraceId
+X-B3-SpanId
+```
+
+---
+
+# 17. Thread Reuse Problem
+
+JMS listener threads are reused:
+
+```text
+Thread-7
+  Message-A
+  Message-B
+  Message-C
+```
+
+If MDC is NOT cleared:
+- Message-B may accidentally use Message-A traceId
+- tracing corruption occurs
+
+---
+
+# 18. How Micrometer Prevents Leakage
+
+Micrometer/OpenTelemetry internally uses tracing scopes:
+
+```java
+try (Scope scope = ...) {
+}
+```
+
+Meaning:
+- MDC populated at start
+- MDC cleared at end
+- ThreadLocal cleared automatically
+
+Thus:
+
+```text
+Message-A traceId != Message-B traceId
+```
+
+even on same thread.
+
+---
+
+# 19. JMS Listener Tracing
 
 ## Problem
 
 JMS listeners often execute on container-managed threads.
 
 Without propagation:
-
 - traceId disappears
 - MDC becomes empty
 - logs lose correlation
 
 ---
 
-# 10. Recommended JMS Setup
-
-## Add TaskDecorator
+# 20. Add TaskDecorator
 
 ```java
 @Bean
@@ -234,7 +444,7 @@ public TaskDecorator tracingTaskDecorator() {
 
 ---
 
-# 11. Configure JMS Listener Container Factory
+# 21. Configure JMS Listener Container Factory
 
 ```java
 @Bean
@@ -265,7 +475,7 @@ public DefaultJmsListenerContainerFactory jmsListenerContainerFactory(
 
 ---
 
-# 12. JMS Listener Example
+# 22. JMS Listener Example
 
 ```java
 @Component
@@ -292,7 +502,7 @@ spanId=xxxx
 
 ---
 
-# 13. If Using Existing JMS Factory From Shared Library
+# 23. If Using Existing JMS Factory From Shared Library
 
 If factory comes from dependency JAR and cannot be modified directly:
 
@@ -334,7 +544,84 @@ public BeanPostProcessor tracingJmsPostProcessor(
 
 ---
 
-# 14. Async Method Propagation
+# 24. What If JMS Trace Headers Are Missing
+
+This commonly happens with:
+- legacy publishers
+- IBM MQ producers
+- non-Java producers
+- COBOL systems
+- old ActiveMQ integrations
+
+In that case:
+- listener receives no trace context
+- new trace should be created
+
+---
+
+# 25. Recommended Fallback Pattern
+
+DO NOT only use:
+
+```java
+MDC.put(...)
+```
+
+Instead create a proper tracing scope.
+
+```java
+@Component
+public class PaymentListener {
+
+    private final Tracer tracer;
+
+    public PaymentListener(Tracer tracer) {
+        this.tracer = tracer;
+    }
+
+    @JmsListener(destination = "PAYMENT.QUEUE")
+    public void receive(String message) {
+
+        Span newSpan =
+                tracer.nextSpan()
+                      .name("jms-message-processing");
+
+        try (Tracer.SpanInScope ws =
+                     tracer.withSpan(newSpan.start())) {
+
+            log.info("processing message");
+
+            // downstream REST calls automatically use same traceId
+
+        } finally {
+
+            newSpan.end();
+
+        }
+    }
+}
+```
+
+---
+
+# 26. Why Manual MDC Is Bad
+
+Avoid:
+
+```java
+MDC.put("traceId", UUID.randomUUID().toString());
+```
+
+because:
+- no actual tracing context exists
+- REST propagation fails
+- async propagation fails
+- child spans fail
+- MDC leakage risk exists
+
+---
+
+# 27. Async Method Propagation
 
 ## Problem
 
@@ -347,7 +634,7 @@ public void execute() {
 
 ---
 
-# 15. Solution
+# 28. Solution
 
 ## Async Executor
 
@@ -372,7 +659,7 @@ public Executor asyncExecutor(
 
 ---
 
-# 16. Reactor Propagation
+# 29. Reactor Propagation
 
 For WebFlux/Reactor systems:
 
@@ -392,9 +679,7 @@ across Reactor chains.
 
 ---
 
-# 17. Manual Span Usage (Optional)
-
-Usually unnecessary now.
+# 30. Manual Span Usage (Optional)
 
 Still supported:
 
@@ -419,9 +704,37 @@ public void execute() {
 
 ---
 
-# 18. Recommended Production Strategy
+# 31. How to Verify JMS Propagation Works
 
-For large enterprise systems:
+Log JMS headers:
+
+```java
+Enumeration<?> names = message.getPropertyNames();
+
+while (names.hasMoreElements()) {
+
+    String key = names.nextElement().toString();
+
+    log.info("{}={}", key,
+             message.getObjectProperty(key));
+}
+```
+
+You should see:
+
+```text
+traceparent
+```
+
+or:
+
+```text
+X-B3-TraceId
+```
+
+---
+
+# 32. Recommended Production Strategy
 
 Recommended:
 - Micrometer Observation
@@ -436,7 +749,7 @@ Avoid:
 
 ---
 
-# 19. Final Migration Checklist
+# 33. Final Migration Checklist
 
 ## Remove
 
@@ -472,7 +785,15 @@ produce: [b3, w3c]
 
 ---
 
-## Ensure logback.xml contains
+## Use
+
+```text
+logback-spring.xml
+```
+
+---
+
+## Ensure Logging Pattern Contains
 
 ```xml
 %X{traceId:-}
@@ -489,15 +810,18 @@ produce: [b3, w3c]
 
 ---
 
-# 20. Final Result
+# 34. Final Result
 
 After migration:
 
-- All REST logs contain traceId
-- JMS listeners contain traceId
+- REST logs contain traceId
+- JMS publisher propagates traceId
+- JMS listener logs contain traceId
+- Downstream REST calls continue same trace
 - Async threads contain traceId
 - Reactor chains contain traceId
-- MDC correlation works automatically
+- MDC cleanup works automatically
+- Thread reuse remains safe
 - No OTLP exporter errors occur
 - Legacy B3 systems continue functioning
 - W3C tracing works for newer systems
