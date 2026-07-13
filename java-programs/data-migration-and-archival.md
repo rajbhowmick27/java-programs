@@ -902,3 +902,466 @@ All execution state is persisted in DynamoDB, allowing any Lambda instance to re
 AWS Glue performs one partition per execution, providing fine-grained scalability, simplified retries, and improved failure isolation.
 
 This design enables both historical migration and continuous archival to reuse the same processing pipeline while remaining fully configuration driven.
+
+# 10. Retry & Failure Handling
+
+The migration framework has been designed to provide partition-level fault tolerance.
+
+Instead of restarting an entire migration, only the failed partition is retried.
+
+Each partition maintains its execution state independently inside DynamoDB.
+
+---
+
+# 10.1 Partition State Machine
+
+Each partition progresses through the following lifecycle.
+
+```text
+
+                 +-------------+
+                 |   PENDING   |
+                 +------+------+ 
+                        |
+                        |
+                        v
+                 +-------------+
+                 |  RUNNING    |
+                 +------+------+ 
+                        |
+        +---------------+----------------+
+        |                                |
+        |                                |
+        v                                v
++---------------+               +----------------+
+|   SUCCESS     |               |    FAILED      |
++---------------+               +-------+--------+
+                                        |
+                              Retry Count < Limit ?
+                                        |
+                     +------------------+----------------+
+                     |                                   |
+                     | Yes                               | No
+                     v                                   v
+
+                 PENDING                            DEAD
+
+```
+
+---
+
+# 10.2 Failure Scenarios
+
+The framework considers failures independently for every component.
+
+| Component | Possible Failure |
+|------------|-----------------|
+| Lambda | Invocation failure |
+| Glue | ETL failure |
+| Database | JDBC connectivity |
+| S3 | Upload failure |
+| Schema | Invalid schema |
+| Data | Corrupt records |
+| DynamoDB | Metadata update failure |
+
+Each failure is isolated to a single partition.
+
+---
+
+# 10.3 Lambda Failure Handling
+
+Possible failures include:
+
+- Unable to load configuration
+- Unable to generate partitions
+- Unable to invoke Glue
+- Unable to acquire processing lock
+
+If Lambda fails before invoking Glue:
+
+```
+RUNNING
+
+↓
+
+PENDING
+```
+
+The partition becomes available during the next execution.
+
+No manual intervention is required.
+
+---
+
+# 10.4 Glue Failure Handling
+
+Possible failures
+
+- JDBC timeout
+- Out of memory
+- Invalid schema
+- S3 write failure
+- Spark executor failure
+
+Glue itself retries failed Spark tasks.
+
+If the Glue Job ultimately fails:
+
+1. Glue emits a FAILED event.
+2. EventBridge captures the event.
+3. Status Lambda updates DynamoDB.
+4. Retry Count increments.
+5. Partition returns to PENDING (if retry threshold not exceeded).
+
+---
+
+# 10.5 Retry Strategy
+
+Retry policy is configurable.
+
+Recommended values:
+
+| Retry | Delay |
+|--------|-------|
+| Retry 1 | Immediate |
+| Retry 2 | 5 Minutes |
+| Retry 3 | 15 Minutes |
+| Retry 4 | 30 Minutes |
+
+Maximum retries
+
+```
+4
+```
+
+After exceeding the retry threshold
+
+```
+FAILED
+
+↓
+
+DEAD
+```
+
+The partition is excluded from automatic execution.
+
+---
+
+# 10.6 Manual Reprocessing
+
+Operations teams may manually restart failed partitions.
+
+The workflow is:
+
+```text
+
+Operator
+
+      |
+
+Reset Status
+
+      |
+
+Retry Count = 0
+
+      |
+
+Status = PENDING
+
+      |
+
+Next Lambda Execution
+
+      |
+
+Glue Job
+
+```
+
+Because output paths are deterministic, the Glue job safely overwrites the same S3 partition.
+
+No duplicate data is generated.
+
+---
+
+# 10.7 Glue Completion Workflow
+
+Instead of polling Glue from Lambda, the framework uses an event-driven completion mechanism.
+
+```text
+
+AWS Glue
+
+      |
+
+Job Completed
+
+      |
+
+Glue State Change Event
+
+      |
+
+Amazon EventBridge
+
+      |
+
+Status Lambda
+
+      |
+
+Update DynamoDB
+
+```
+
+Benefits:
+
+- No polling
+- Lower Lambda execution time
+- Better scalability
+- Automatic event delivery
+- Cleaner separation of responsibilities
+
+---
+
+# 11. Reconciliation Strategy
+
+Data reconciliation validates that migrated data matches the source.
+
+Validation occurs at the partition level.
+
+---
+
+# 11.1 Validation Checks
+
+Each completed partition performs the following validations.
+
+| Validation | Source | Target |
+|------------|--------|--------|
+| Row Count | Database | Parquet |
+| File Count | Glue | S3 |
+| Partition Count | DynamoDB | S3 |
+| Schema Validation | Avro | Parquet |
+| Checksum (Optional) | Database | Parquet |
+
+---
+
+# 11.2 Row Count Validation
+
+Example
+
+Database
+
+```
+1,245,321 rows
+```
+
+Parquet
+
+```
+1,245,321 rows
+```
+
+If counts match
+
+```
+SUCCESS
+```
+
+Otherwise
+
+```
+RECONCILIATION_FAILED
+```
+
+---
+
+# 11.3 Checksum Validation (Optional)
+
+For critical tables an additional checksum may be generated.
+
+Example
+
+```
+MD5
+
+SHA-256
+
+CRC32
+```
+
+The checksum is calculated independently for:
+
+- Source dataset
+- Generated Parquet dataset
+
+Matching checksums provide higher confidence in migration integrity.
+
+---
+
+# 11.4 Reconciliation Metadata
+
+Additional attributes stored in DynamoDB.
+
+| Attribute | Description |
+|------------|-------------|
+| Source Row Count | Records extracted |
+| Target Row Count | Records written |
+| Validation Status | PASS / FAIL |
+| Checksum | Optional |
+| Validation Timestamp | Audit information |
+
+---
+
+# 12. Monitoring & Alerting
+
+Operational visibility is provided using CloudWatch.
+
+---
+
+## Metrics
+
+The following metrics should be published.
+
+| Metric | Description |
+|---------|-------------|
+| Partitions Created | Number of generated partitions |
+| Partitions Running | Active Glue jobs |
+| Successful Partitions | Completed partitions |
+| Failed Partitions | Failed partitions |
+| Rows Archived | Total migrated records |
+| Data Archived | Total archived size |
+| Glue Runtime | Execution duration |
+| Retry Count | Retry attempts |
+
+---
+
+## Dashboards
+
+Recommended CloudWatch dashboards:
+
+- Migration Progress
+- Active Glue Jobs
+- Success Rate
+- Failure Rate
+- Average Glue Runtime
+- Archived Data Volume
+- Retry Distribution
+
+---
+
+## Alerts
+
+Alerts should be generated for:
+
+- Glue Job Failure
+- Excessive Retry Count
+- Partition Dead State
+- DynamoDB Errors
+- JDBC Connectivity Failure
+- S3 Write Failure
+
+Alerts may be integrated with:
+
+- Amazon SNS
+- Email
+- Slack
+- PagerDuty
+
+---
+
+# 13. Security Considerations
+
+The framework follows AWS security best practices.
+
+---
+
+## Authentication
+
+- IAM Roles for Lambda
+- IAM Roles for Glue
+
+---
+
+## Secrets
+
+Database credentials are stored in AWS Secrets Manager.
+
+No credentials are stored inside code or configuration files.
+
+---
+
+## Network
+
+Glue connects to databases through private networking.
+
+Traffic remains encrypted in transit.
+
+---
+
+## Encryption
+
+- SSE-KMS for Amazon S3
+- DynamoDB Encryption
+- TLS for JDBC Connections
+
+---
+
+# 14. Operational Runbook
+
+## One-Time Oracle Migration
+
+1. Deploy configuration.
+2. Trigger Lambda manually.
+3. Monitor partition creation.
+4. Monitor Glue executions.
+5. Validate reconciliation.
+6. Enable Glacier lifecycle.
+
+---
+
+## Daily Aurora Archival
+
+1. EventBridge triggers Lambda.
+2. Eligible partitions are generated.
+3. Glue archives completed tickets.
+4. Validation completes.
+5. Lifecycle transitions archived data to Glacier.
+
+---
+
+# 15. Future Enhancements
+
+The framework has been designed to support future enhancements without architectural changes.
+
+Potential enhancements include:
+
+- AWS Step Functions orchestration
+- Additional database connectors
+- Iceberg or Delta Lake support
+- Glue Auto Scaling
+- Automatic schema evolution
+- Data Quality Framework integration
+- AWS Glue Data Catalog integration
+- Multi-account archival
+- Cross-region archival
+
+---
+
+# 16. Conclusion
+
+The proposed framework provides a generic, scalable, and resilient solution for both historical data migration and continuous archival.
+
+By separating orchestration from ETL processing and using timestamp-based partitioning as the unit of work, the solution achieves:
+
+- Scalable parallel execution
+- Configuration-driven onboarding
+- Partition-level retries
+- Fine-grained failure isolation
+- End-to-end reconciliation
+- Operational observability
+- Long-term archival using Amazon S3 and Glacier
+
+This design enables future onboarding of additional source systems while reusing the same orchestration and ETL framework, minimizing development effort and operational complexity.
